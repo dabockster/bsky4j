@@ -14,6 +14,29 @@ import bsky4j.api.entity.share.Response;
 public interface ServerResource {
 
     /**
+     * Activate account email address.
+     */
+    Response<Void> activateAccount();
+
+    /**
+     * Check account login status.
+     */
+    Response<Void> checkAccountStatus();
+
+    /**
+     * Confirm email operation.
+     */
+    Response<Void> confirmEmail();
+
+    /**
+     * Create a new app password.
+     */
+    Response<Void> createAppPassword();
+
+    /**
+     * Create invite code without auth.
+     */
+    /**
      * Create an account.
      */
     void createAccount();
@@ -27,6 +50,7 @@ public interface ServerResource {
      * Create an authentication session.
      */
     Response<ServerCreateSessionResponse> createSession(ServerCreateSessionRequest request);
+ 
 
     /**
      * Delete a user account with a token and password.
@@ -52,6 +76,9 @@ public interface ServerResource {
      * Refresh an authentication session.
      */
     Response<ServerRefreshSessionResponse> refreshSession(AuthRequest request);
+
+    /**
+     *  Reques
 
     /**
      * Initiate a user account deletion via email.
