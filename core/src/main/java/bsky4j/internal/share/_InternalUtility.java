@@ -12,6 +12,7 @@ import net.socialhub.http.HttpResponseCode;
 
 import java.text.SimpleDateFormat;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import bsky4j.ATProtocolException;
 import bsky4j.api.entity.share.Response;
@@ -37,35 +38,54 @@ import bsky4j.util.json.RichtextFacetFeatureSerializer;
  */
 public class _InternalUtility {
 
-    public final static Gson gson = new GsonBuilder()
-            .registerTypeAdapter(
-                    EmbedUnion.class,
-                    new EmbedDeserializer())
-            .registerTypeAdapter(
-                    EmbedUnion.class,
-                    new EmbedSerializer())
-            .registerTypeAdapter(
-                    EmbedViewUnion.class,
-                    new EmbedViewDeserializer())
-            .registerTypeAdapter(
-                    RecordUnion.class,
-                    new RecordDeserializer())
-            .registerTypeAdapter(
-                    FeedDefsThreadUnion.class,
-                    new FeedDefsThreadDeserializer())
-            .registerTypeAdapter(
-                    RichtextFacetFeatureUnion.class,
-                    new RichtextFacetFeatureDeserializer())
-            .registerTypeAdapter(
-                    RichtextFacetFeatureUnion.class,
-                    new RichtextFacetFeatureSerializer())
-            .registerTypeAdapter(
-                    EmbedRecordViewUnion.class,
-                    new EmbedRecordViewDeserializer())
-            .registerTypeAdapter(
-                    ActorDefsPreferencesUnion.class,
-                    new ActorDefsPreferencesDeserializer())
-            .create();
+    // Use lazy initialization with thread-safety for Gson
+    private static final AtomicReference<Gson> gsonRef = new AtomicReference<>();
+
+    public static Gson getGson() {
+        Gson instance = gsonRef.get();
+        if (instance == null) {
+            synchronized (_InternalUtility.class) {
+                instance = gsonRef.get();
+                if (instance == null) {
+                    instance = createGson();
+                    gsonRef.set(instance);
+                }
+            }
+        }
+        return instance;
+    }
+
+    private static Gson createGson() {
+        return new GsonBuilder()
+                .registerTypeAdapter(
+                        EmbedUnion.class,
+                        new EmbedDeserializer())
+                .registerTypeAdapter(
+                        EmbedUnion.class,
+                        new EmbedSerializer())
+                .registerTypeAdapter(
+                        EmbedViewUnion.class,
+                        new EmbedViewDeserializer())
+                .registerTypeAdapter(
+                        RecordUnion.class,
+                        new RecordDeserializer())
+                .registerTypeAdapter(
+                        FeedDefsThreadUnion.class,
+                        new FeedDefsThreadDeserializer())
+                .registerTypeAdapter(
+                        RichtextFacetFeatureUnion.class,
+                        new RichtextFacetFeatureDeserializer())
+                .registerTypeAdapter(
+                        RichtextFacetFeatureUnion.class,
+                        new RichtextFacetFeatureSerializer())
+                .registerTypeAdapter(
+                        EmbedRecordViewUnion.class,
+                        new EmbedRecordViewDeserializer())
+                .registerTypeAdapter(
+                        ActorDefsPreferencesUnion.class,
+                        new ActorDefsPreferencesDeserializer())
+                .create();
+    }
 
     public final static SimpleDateFormat dateFormat;
 
@@ -97,7 +117,7 @@ public class _InternalUtility {
                 Response<T> result = new Response<>();
                 String json = response.asString();
                 result.setJson(json);
-                result.set(gson.fromJson(json, clazz));
+                result.set(getGson().fromJson(json, clazz));
                 return result;
             }
             throw new ATProtocolException(null);
@@ -114,7 +134,7 @@ public class _InternalUtility {
                 Response<T> result = new Response<>();
                 final String json = response.asString();
                 result.setJson(json);
-                result.set(gson.fromJson(json, clazz.getType()));
+                result.set(getGson().fromJson(json, clazz.getType()));
                 return result;
             }
 
@@ -141,7 +161,7 @@ public class _InternalUtility {
     static RuntimeException handleError(HttpException e) {
         try {
             String message = e.getResponse().asString();
-            Map<String, Object> error = gson.fromJson(message,
+            Map<String, Object> error = getGson().fromJson(message,
                     new TypeToken<Map<String, Object>>() {
                     }.getType());
 

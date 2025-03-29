@@ -7,10 +7,9 @@ import bsky4j.model.bsky.richtext.RichtextFacetMention;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 public class FacetList {
 
@@ -35,25 +34,29 @@ public class FacetList {
     ) {
         int bytes = 0;
         List<RichtextFacet> facets = new ArrayList<>();
-        Function<String, Integer> byteCount = (str) ->
-                str.getBytes(StandardCharsets.UTF_8).length;
+        
+        // Pre-calculate byte lengths for all records to avoid repeated calculations
+        Map<FacetRecord, Integer> byteLengths = new HashMap<>();
+        for (FacetRecord record : records) {
+            byteLengths.put(record, record.getDisplayText().getBytes(StandardCharsets.UTF_8).length);
+        }
 
         for (FacetRecord record : records) {
-
+            int recordByteLength = byteLengths.get(record);
+            
             switch (record.getType()) {
                 case Text: {
-                    bytes += byteCount.apply(record.getDisplayText());
+                    bytes += recordByteLength;
                     break;
                 }
 
                 case Mention:
-
-                    // DID が設定されている場合はリンクとして Facet を準備
+                    // If DID is set, prepare a Facet as a link
                     if (handleToDidMap.containsKey(record.getDisplayText())) {
                         RichtextFacetByteSlice slice = new RichtextFacetByteSlice();
 
                         slice.setByteStart(bytes);
-                        bytes += byteCount.apply(record.getDisplayText());
+                        bytes += recordByteLength;
                         slice.setByteEnd(bytes);
 
                         RichtextFacet facet = new RichtextFacet();
@@ -66,8 +69,8 @@ public class FacetList {
                         facets.add(facet);
 
                     } else {
-                        // DID が設定されていない場合は単純なテキストとして表示
-                        bytes += byteCount.apply(record.getDisplayText());
+                        // If DID is not set, display as simple text
+                        bytes += recordByteLength;
                     }
                     break;
 
@@ -75,7 +78,7 @@ public class FacetList {
                     RichtextFacetByteSlice slice = new RichtextFacetByteSlice();
 
                     slice.setByteStart(bytes);
-                    bytes += byteCount.apply(record.getDisplayText());
+                    bytes += recordByteLength;
                     slice.setByteEnd(bytes);
 
                     RichtextFacet facet = new RichtextFacet();
