@@ -1,46 +1,32 @@
 package bsky4j.util.json;
 
-import bsky4j.model.bsky.embed.EmbedRecordViewBlocked;
-import bsky4j.model.bsky.embed.EmbedRecordViewNotFound;
+import bsky4j.model.bsky.embed.EmbedRecordViewArticle;
+import bsky4j.model.bsky.embed.EmbedRecordViewExternal;
+import bsky4j.model.bsky.embed.EmbedRecordViewImage;
 import bsky4j.model.bsky.embed.EmbedRecordViewRecord;
 import bsky4j.model.bsky.embed.EmbedRecordViewUnion;
-import com.google.gson.JsonDeserializationContext;
-import com.google.gson.JsonDeserializer;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParseException;
 import com.google.gson.reflect.TypeToken;
 
-import java.lang.reflect.Type;
+import java.util.HashMap;
+import java.util.Map;
 
-public class EmbedRecordViewDeserializer implements JsonDeserializer<EmbedRecordViewUnion> {
-
-    @Override
-    public EmbedRecordViewUnion deserialize(
-            JsonElement json,
-            Type typeOfT,
-            JsonDeserializationContext context
-    ) throws JsonParseException {
-
-        JsonObject obj = json.getAsJsonObject();
-        JsonElement type = obj.get("$type");
-
-        if (type != null) {
-            if (type.getAsString().equals(EmbedRecordViewRecord.TYPE)) {
-                return context.deserialize(obj, new TypeToken<EmbedRecordViewRecord>() {
-                }.getType());
-            }
-
-            if (type.getAsString().equals(EmbedRecordViewNotFound.TYPE)) {
-                return context.deserialize(obj, new TypeToken<EmbedRecordViewNotFound>() {
-                }.getType());
-            }
-
-            if (type.getAsString().equals(EmbedRecordViewBlocked.TYPE)) {
-                return context.deserialize(obj, new TypeToken<EmbedRecordViewBlocked>() {
-                }.getType());
-            }
-        }
-        return null;
+/**
+ * Optimized deserializer for EmbedRecordViewUnion with improved performance and error handling.
+ */
+public class EmbedRecordViewDeserializer extends UnionDeserializer<EmbedRecordViewUnion> {
+    private static final Map<String, TypeToken<? extends EmbedRecordViewUnion>> TYPES = new HashMap<>();
+    
+    static {
+        TYPES.put(EmbedRecordViewArticle.TYPE, new TypeToken<EmbedRecordViewArticle>() {});
+        TYPES.put(EmbedRecordViewExternal.TYPE, new TypeToken<EmbedRecordViewExternal>() {});
+        TYPES.put(EmbedRecordViewImage.TYPE, new TypeToken<EmbedRecordViewImage>() {});
+        TYPES.put(EmbedRecordViewRecord.TYPE, new TypeToken<EmbedRecordViewRecord>() {});
+    }
+    
+    /**
+     * Initializes the type map with supported types.
+     */
+    public EmbedRecordViewDeserializer() {
+        initTypeMap(TYPES);
     }
 }

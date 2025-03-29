@@ -1,46 +1,30 @@
 package bsky4j.util.json;
 
-
 import bsky4j.model.bsky.actor.ActorDefsAdultContentPref;
 import bsky4j.model.bsky.actor.ActorDefsContentLabelPref;
 import bsky4j.model.bsky.actor.ActorDefsPreferencesUnion;
 import bsky4j.model.bsky.actor.ActorDefsSavedFeedsPref;
-import com.google.gson.JsonDeserializationContext;
-import com.google.gson.JsonDeserializer;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParseException;
 import com.google.gson.reflect.TypeToken;
 
-import java.lang.reflect.Type;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
- * @see ActorDefsPreferencesUnion
+ * Optimized deserializer for ActorDefsPreferencesUnion with improved performance and error handling.
  */
-public class ActorDefsPreferencesDeserializer implements JsonDeserializer<ActorDefsPreferencesUnion> {
-
-    @Override
-    public ActorDefsPreferencesUnion deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
-
-        JsonObject obj = json.getAsJsonObject();
-        JsonElement type = obj.get("$type");
-
-        if (type != null) {
-            if (type.getAsString().equals(ActorDefsAdultContentPref.TYPE)) {
-                return context.deserialize(obj, new TypeToken<ActorDefsAdultContentPref>() {
-                }.getType());
-            }
-
-            if (type.getAsString().equals(ActorDefsContentLabelPref.TYPE)) {
-                return context.deserialize(obj, new TypeToken<ActorDefsContentLabelPref>() {
-                }.getType());
-            }
-
-            if (type.getAsString().equals(ActorDefsSavedFeedsPref.TYPE)) {
-                return context.deserialize(obj, new TypeToken<ActorDefsSavedFeedsPref>() {
-                }.getType());
-            }
-        }
-        return null;
+public class ActorDefsPreferencesDeserializer extends UnionDeserializer<ActorDefsPreferencesUnion> {
+    private static final Map<String, TypeToken<? extends ActorDefsPreferencesUnion>> TYPES = new HashMap<>();
+    
+    static {
+        TYPES.put(ActorDefsAdultContentPref.TYPE, new TypeToken<ActorDefsAdultContentPref>() {});
+        TYPES.put(ActorDefsContentLabelPref.TYPE, new TypeToken<ActorDefsContentLabelPref>() {});
+        TYPES.put(ActorDefsSavedFeedsPref.TYPE, new TypeToken<ActorDefsSavedFeedsPref>() {});
+    }
+    
+    /**
+     * Initializes the type map with supported types.
+     */
+    public ActorDefsPreferencesDeserializer() {
+        initTypeMap(TYPES);
     }
 }

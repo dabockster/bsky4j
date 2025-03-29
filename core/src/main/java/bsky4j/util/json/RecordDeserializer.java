@@ -15,8 +15,21 @@ import com.google.gson.JsonParseException;
 import com.google.gson.reflect.TypeToken;
 
 import java.lang.reflect.Type;
+import java.util.HashMap;
+import java.util.Map;
 
 public class RecordDeserializer implements JsonDeserializer<RecordUnion> {
+
+    private static final Map<String, TypeToken<? extends RecordUnion>> TYPE_MAP = new HashMap<>();
+
+    static {
+        TYPE_MAP.put(ActorProfile.TYPE, new TypeToken<ActorProfile>() {});
+        TYPE_MAP.put(FeedPost.TYPE, new TypeToken<FeedPost>() {});
+        TYPE_MAP.put(FeedLike.TYPE, new TypeToken<FeedLike>() {});
+        TYPE_MAP.put(FeedRepost.TYPE, new TypeToken<FeedRepost>() {});
+        TYPE_MAP.put(GraphFollow.TYPE, new TypeToken<GraphFollow>() {});
+        TYPE_MAP.put(GraphBlock.TYPE, new TypeToken<GraphBlock>() {});
+    }
 
     @Override
     public RecordUnion deserialize(
@@ -29,29 +42,9 @@ public class RecordDeserializer implements JsonDeserializer<RecordUnion> {
         JsonElement type = obj.get("$type");
 
         if (type != null) {
-            if (type.getAsString().equals(ActorProfile.TYPE)) {
-                return context.deserialize(obj, new TypeToken<ActorProfile>() {
-                }.getType());
-            }
-            if (type.getAsString().equals(FeedPost.TYPE)) {
-                return context.deserialize(obj, new TypeToken<FeedPost>() {
-                }.getType());
-            }
-            if (type.getAsString().equals(FeedLike.TYPE)) {
-                return context.deserialize(obj, new TypeToken<FeedLike>() {
-                }.getType());
-            }
-            if (type.getAsString().equals(FeedRepost.TYPE)) {
-                return context.deserialize(obj, new TypeToken<FeedRepost>() {
-                }.getType());
-            }
-            if (type.getAsString().equals(GraphFollow.TYPE)) {
-                return context.deserialize(obj, new TypeToken<GraphFollow>() {
-                }.getType());
-            }
-            if (type.getAsString().equals(GraphBlock.TYPE)) {
-                return context.deserialize(obj, new TypeToken<GraphBlock>() {
-                }.getType());
+            TypeToken<? extends RecordUnion> typeToken = TYPE_MAP.get(type.getAsString());
+            if (typeToken != null) {
+                return context.deserialize(obj, typeToken.getType());
             }
         }
         return null;

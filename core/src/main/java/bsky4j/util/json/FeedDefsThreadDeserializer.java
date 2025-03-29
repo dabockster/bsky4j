@@ -11,8 +11,17 @@ import com.google.gson.JsonParseException;
 import com.google.gson.reflect.TypeToken;
 
 import java.lang.reflect.Type;
+import java.util.HashMap;
+import java.util.Map;
 
 public class FeedDefsThreadDeserializer implements JsonDeserializer<FeedDefsThreadUnion> {
+
+    private static final Map<String, TypeToken<? extends FeedDefsThreadUnion>> TYPE_MAP = new HashMap<>();
+
+    static {
+        TYPE_MAP.put(FeedDefsThreadViewPost.TYPE, new TypeToken<FeedDefsThreadViewPost>() {});
+        TYPE_MAP.put(FeedDefsNotFoundPost.TYPE, new TypeToken<FeedDefsNotFoundPost>() {});
+    }
 
     @Override
     public FeedDefsThreadUnion deserialize(
@@ -25,13 +34,9 @@ public class FeedDefsThreadDeserializer implements JsonDeserializer<FeedDefsThre
         JsonElement type = obj.get("$type");
 
         if (type != null) {
-            if (type.getAsString().equals(FeedDefsThreadViewPost.TYPE)) {
-                return context.deserialize(obj, new TypeToken<FeedDefsThreadViewPost>() {
-                }.getType());
-            }
-            if (type.getAsString().equals(FeedDefsNotFoundPost.TYPE)) {
-                return context.deserialize(obj, new TypeToken<FeedDefsNotFoundPost>() {
-                }.getType());
+            TypeToken<? extends FeedDefsThreadUnion> typeToken = TYPE_MAP.get(type.getAsString());
+            if (typeToken != null) {
+                return context.deserialize(obj, typeToken.getType());
             }
         }
 

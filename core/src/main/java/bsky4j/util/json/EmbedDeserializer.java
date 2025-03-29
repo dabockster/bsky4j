@@ -14,8 +14,19 @@ import com.google.gson.JsonParseException;
 import com.google.gson.reflect.TypeToken;
 
 import java.lang.reflect.Type;
+import java.util.HashMap;
+import java.util.Map;
 
 public class EmbedDeserializer implements JsonDeserializer<EmbedUnion> {
+
+    private static final Map<String, TypeToken<? extends EmbedUnion>> TYPE_MAP = new HashMap<>();
+
+    static {
+        TYPE_MAP.put(BlueskyTypes.EmbedImages, new TypeToken<EmbedImages>() {});
+        TYPE_MAP.put(BlueskyTypes.EmbedExternal, new TypeToken<EmbedExternal>() {});
+        TYPE_MAP.put(BlueskyTypes.EmbedRecord, new TypeToken<EmbedRecord>() {});
+        TYPE_MAP.put(BlueskyTypes.EmbedRecordWithMedia, new TypeToken<EmbedRecordWithMedia>() {});
+    }
 
     @Override
     public EmbedUnion deserialize(
@@ -23,29 +34,13 @@ public class EmbedDeserializer implements JsonDeserializer<EmbedUnion> {
             Type typeOfT,
             JsonDeserializationContext context
     ) throws JsonParseException {
-
         JsonObject obj = json.getAsJsonObject();
         JsonElement type = obj.get("$type");
 
         if (type != null) {
-            if (type.getAsString().equals(BlueskyTypes.EmbedImages)) {
-                return context.deserialize(obj, new TypeToken<EmbedImages>() {
-                }.getType());
-            }
-
-            if (type.getAsString().equals(BlueskyTypes.EmbedExternal)) {
-                return context.deserialize(obj, new TypeToken<EmbedExternal>() {
-                }.getType());
-            }
-
-            if (type.getAsString().equals(BlueskyTypes.EmbedRecord)) {
-                return context.deserialize(obj, new TypeToken<EmbedRecord>() {
-                }.getType());
-            }
-
-            if (type.getAsString().equals(BlueskyTypes.EmbedRecordWithMedia)) {
-                return context.deserialize(obj, new TypeToken<EmbedRecordWithMedia>() {
-                }.getType());
+            TypeToken<? extends EmbedUnion> typeToken = TYPE_MAP.get(type.getAsString());
+            if (typeToken != null) {
+                return context.deserialize(obj, typeToken.getType());
             }
         }
         return null;
