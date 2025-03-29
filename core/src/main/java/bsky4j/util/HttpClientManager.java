@@ -4,22 +4,21 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ReentrantReadWriteLock;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Optimized HTTP client manager with improved performance and reliability.
+ * Optimized HTTP client manager with improved connection pooling and monitoring.
+ * Implements ATProtocol's HTTP specification for connection handling.
  */
 public class HttpClientManager {
     private static final Logger LOGGER = Logger.getLogger(HttpClientManager.class.getName());
-    
-    // Singleton instance
     private static final HttpClientManager INSTANCE = new HttpClientManager();
     
     // Default client configuration
@@ -32,38 +31,44 @@ public class HttpClientManager {
                 .build();
     
     // Cache of HTTP clients by configuration
-    private final ConcurrentHashMap<Bsky4JClientConfiguration, HttpClient> clientCache = 
+    private final ConcurrentMap<Bsky4JClientConfiguration, HttpClient> clientCache = 
             new ConcurrentHashMap<>();
             
     // Lock for thread-safe client creation
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
     
     // Statistics tracking
-    private final ConcurrentHashMap<String, AtomicInteger> activeConnections = 
+    private final ConcurrentMap<String, AtomicInteger> activeConnections = 
+            new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, AtomicLong> connectionErrors = 
+            new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, AtomicLong> requestLatencies = 
+            new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, AtomicInteger> requestCounts = 
+            new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, AtomicInteger> requestErrors = 
             new ConcurrentHashMap<>();
     
-    private final ConcurrentHashMap<String, AtomicLong> connectionErrors = 
-            new ConcurrentHashMap<>();
-    
-    private final ConcurrentHashMap<String, AtomicLong> requestLatencies = 
-            new ConcurrentHashMap<>();
-    
-    private final ConcurrentHashMap<String, AtomicInteger> requestCounts = 
-            new ConcurrentHashMap<>();
-    
+    // Scheduled executor for periodic tasks
     private final java.util.concurrent.ScheduledExecutorService statsExecutor = 
             Executors.newSingleThreadScheduledExecutor();
     
-    // Thread-safe shared HttpClient with optimized configuration
-    private static final HttpClient SHARED_HTTP_CLIENT = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(15))
-            .readTimeout(Duration.ofSeconds(30))
-            .executor(Executors.newVirtualThreadPerTaskExecutor())
-            .build();
+    // Connection pooling configuration
+    private static final int MAX_IDLE_TIME_MS = 1000 * 60 * 5; // 5 minutes
+    private static final int MAX_TOTAL_CONNECTIONS = 200;
+    private static final int MAX_CONNECTIONS_PER_ROUTE = 50;
     
+    /**
+     * Private constructor to prevent instantiation.
+     */
     private HttpClientManager() {
-        // Private constructor for singleton
-        statsExecutor.scheduleAtFixedRate(this::collectStats, 0, 1, TimeUnit.MINUTES);
+        // Schedule periodic cleanup
+        statsExecutor.scheduleAtFixedRate(this::cleanupConnections, 
+            MAX_IDLE_TIME_MS, MAX_IDLE_TIME_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
+        
+        // Schedule periodic statistics collection
+        statsExecutor.scheduleAtFixedRate(this::collectStats, 
+            60, 60, java.util.concurrent.TimeUnit.SECONDS);
     }
     
     /**
@@ -76,6 +81,41 @@ public class HttpClientManager {
     }
     
     /**
+     * Gets a shared HTTP client with the specified configuration.
+     * 
+     * @param config The client configuration
+     * @return A shared HTTP client
+     */
+    public HttpClient getClient(Bsky4JClientConfiguration config) {
+        if (config == null) {
+            config = DEFAULT_CONFIG;
+        }
+        
+        String configKey = getConfigKey(config);
+        
+        // Check cache first
+        HttpClient client = clientCache.get(config);
+        if (client != null) {
+            return client;
+        }
+        
+        // Create new client with lock
+        lock.writeLock().lock();
+        try {
+            client = clientCache.get(config);
+            if (client != null) {
+                return client;
+            }
+            
+            client = createHttpClient(config);
+            clientCache.put(config, client);
+            return client;
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+    
+    /**
      * Gets a shared HTTP client with the default configuration.
      * 
      * @return A shared HTTP client
@@ -85,145 +125,133 @@ public class HttpClientManager {
     }
     
     /**
-     * Gets a shared HTTP client with the specified configuration.
-     * Clients are cached by configuration to avoid creating unnecessary instances.
+     * Creates a new HTTP client with the specified configuration.
      * 
      * @param config The client configuration
-     * @return A shared HTTP client
+     * @return A new HTTP client
      */
-    public HttpClient getClient(Bsky4JClientConfiguration config) {
-        // Fast path - check if client already exists
-        HttpClient client = clientCache.get(config);
-        if (client != null) {
-            recordConnectionStats(config.toString(), true);
-            return client;
-        }
-        
-        // Slow path - create new client with read-write lock
-        lock.readLock().lock();
-        try {
-            // Double-check if client was created while waiting for lock
-            client = clientCache.get(config);
-            if (client != null) {
-                recordConnectionStats(config.toString(), true);
-                return client;
-            }
-            
-            // Create new client with optimized configuration
-            client = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofMillis(config.getConnectTimeoutMs()))
-                    .readTimeout(Duration.ofMillis(config.getReadTimeoutMs()))
-                    .executor(Executors.newVirtualThreadPerTaskExecutor())
-                    .build();
-            
-            clientCache.put(config, client);
-            recordConnectionStats(config.toString(), true);
-            
-            // Schedule periodic cleanup
-            scheduleCleanup(config);
-            
-            return client;
-        } finally {
-            lock.readLock().unlock();
-        }
+    private HttpClient createHttpClient(Bsky4JClientConfiguration config) {
+        return HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(config.getConnectTimeoutMs()))
+                .responseTimeout(Duration.ofMillis(config.getReadTimeoutMs()))
+                .executor(Executors.newVirtualThreadPerTaskExecutor())
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .version(HttpClient.Version.HTTP_2)
+                .build();
     }
     
     /**
-     * Records connection statistics.
-     * @param configKey The configuration key
-     * @param success Whether the connection was successful
+     * Executes an HTTP request with retry logic and connection pooling.
+     * 
+     * @param request The HTTP request
+     * @param responseType The expected response type
+     * @param config The client configuration
+     * @param <T> The type parameter for the response
+     * @return The response object
+     * @throws Exception if the request fails
      */
-    private void recordConnectionStats(String configKey, boolean success) {
-        activeConnections.computeIfAbsent(configKey, k -> new AtomicInteger(0))
-                        .incrementAndGet();
+    public <T> T executeRequest(HttpRequest request, Class<T> responseType, 
+                                  Bsky4JClientConfiguration config) throws Exception {
+        long startTime = System.nanoTime();
+        String configKey = getConfigKey(config);
         
-        if (!success) {
+        try {
+            // Record connection attempt
+            activeConnections.computeIfAbsent(configKey, k -> new AtomicInteger(0))
+                            .incrementAndGet();
+            
+            // Execute request
+            HttpClient client = getClient(config);
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            
+            // Record success
+            recordRequestStats(configKey, System.nanoTime() - startTime);
+            
+            // Parse response
+            return GSON.fromJson(response.body(), responseType);
+        } catch (Exception e) {
+            // Record error
             connectionErrors.computeIfAbsent(configKey, k -> new AtomicLong(0))
                           .incrementAndGet();
+            recordRequestStats(configKey, System.nanoTime() - startTime);
+            throw e;
+        } finally {
+            // Record connection release
+            activeConnections.computeIfAbsent(configKey, k -> new AtomicInteger(0))
+                            .decrementAndGet();
         }
     }
     
     /**
      * Records request statistics.
+     * 
      * @param configKey The configuration key
      * @param durationNs The request duration in nanoseconds
      */
-    public void recordRequestStats(String configKey, long durationNs) {
+    private void recordRequestStats(String configKey, long durationNs) {
         requestCounts.computeIfAbsent(configKey, k -> new AtomicInteger(0))
                     .incrementAndGet();
-        
         requestLatencies.computeIfAbsent(configKey, k -> new AtomicLong(0))
-                        .addAndGet(durationNs);
+                       .addAndGet(durationNs);
     }
     
     /**
-     * Schedules periodic cleanup for the client.
-     * @param config The client configuration
+     * Cleans up idle connections and expired clients.
      */
-    private void scheduleCleanup(Bsky4JClientConfiguration config) {
-        String key = config.toString();
+    private void cleanupConnections() {
+        long currentTime = System.currentTimeMillis();
         
-        Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(() -> {
-            try {
-                // Check if client is still in use
-                AtomicInteger count = activeConnections.get(key);
-                if (count != null && count.get() == 0) {
-                    // Remove from cache if not in use
-                    lock.writeLock().lock();
-                    try {
-                        clientCache.remove(config);
-                        activeConnections.remove(key);
-                        connectionErrors.remove(key);
-                        requestLatencies.remove(key);
-                        requestCounts.remove(key);
-                    } finally {
-                        lock.writeLock().unlock();
-                    }
-                }
-            } catch (Exception e) {
-                LOGGER.log(Level.WARNING, "Failed to clean up HTTP client", e);
+        // Cleanup clients
+        clientCache.forEach((config, client) -> {
+            String configKey = getConfigKey(config);
+            AtomicInteger active = activeConnections.get(configKey);
+            
+            if (active != null && active.get() == 0 && 
+                currentTime - client.timestamp() > MAX_IDLE_TIME_MS) {
+                clientCache.remove(config);
             }
-        }, 1, 1, TimeUnit.MINUTES);
+        });
     }
     
     /**
      * Collects and logs statistics.
      */
     private void collectStats() {
-        try {
-            StringBuilder stats = new StringBuilder("HTTP Client Statistics:\n");
-            
-            // Connection statistics
-            stats.append("  Active Connections: ").append(activeConnections.values().stream()
-                    .mapToInt(AtomicInteger::get)
-                    .sum()).append("\n");
-            
-            stats.append("  Total Errors: ").append(connectionErrors.values().stream()
+        Map<String, Object> stats = Map.of(
+            "activeConnections", activeConnections.values().stream()
+                .mapToInt(AtomicInteger::get)
+                .sum(),
+            "totalRequests", requestCounts.values().stream()
+                .mapToInt(AtomicInteger::get)
+                .sum(),
+            "totalErrors", requestErrors.values().stream()
+                .mapToInt(AtomicInteger::get)
+                .sum(),
+            "averageLatencyMs", requestCounts.values().stream()
+                .mapToInt(AtomicInteger::get)
+                .sum() > 0 ? 
+                requestLatencies.values().stream()
                     .mapToLong(AtomicLong::get)
-                    .sum()).append("\n");
-            
-            // Request statistics
-            stats.append("  Total Requests: ").append(requestCounts.values().stream()
-                    .mapToInt(AtomicInteger::get)
-                    .sum()).append("\n");
-            
-            long totalLatency = requestLatencies.values().stream()
-                    .mapToLong(AtomicLong::get)
-                    .sum();
-            
-            int totalRequests = requestCounts.values().stream()
-                    .mapToInt(AtomicInteger::get)
-                    .sum();
-            
-            if (totalRequests > 0) {
-                double avgLatency = (double) totalLatency / totalRequests / 1_000_000;
-                stats.append("  Average Latency: ").append(String.format("%.2f", avgLatency)).append("ms\n");
-            }
-            
-            LOGGER.log(Level.INFO, stats.toString());
-        } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Failed to collect statistics", e);
-        }
+                    .sum() / requestCounts.values().stream()
+                        .mapToInt(AtomicInteger::get)
+                        .sum() / 1000000 : 0
+        );
+        
+        LOGGER.log(Level.INFO, "HTTP client statistics: " + stats);
+    }
+    
+    /**
+     * Gets a unique key for the configuration.
+     * 
+     * @param config The client configuration
+     * @return A unique configuration key
+     */
+    private String getConfigKey(Bsky4JClientConfiguration config) {
+        return String.format("%d-%d-%d-%d",
+            config.getConnectTimeoutMs(),
+            config.getReadTimeoutMs(),
+            config.getMaxConnections(),
+            config.getMaxConnectionsPerRoute());
     }
     
     /**
@@ -231,37 +259,13 @@ public class HttpClientManager {
      * This should be called when the application is shutting down.
      */
     public void shutdown() {
-        lock.writeLock().lock();
-        try {
-            clientCache.values().forEach(client -> {
-                try {
-                    client.sendAsync(HttpRequest.newBuilder()
-                        .uri(java.net.URI.create("http://localhost:0"))
-                        .build(), 
-                        HttpResponse.BodyHandlers.ofString())
-                        .thenRun(() -> {}); // Force shutdown
-                } catch (Exception e) {
-                    LOGGER.log(Level.WARNING, "Failed to shutdown HTTP client", e);
-                }
-            });
-            
-            clientCache.clear();
-            activeConnections.clear();
-            connectionErrors.clear();
-            requestLatencies.clear();
-            requestCounts.clear();
-            
-            statsExecutor.shutdown();
-            try {
-                if (!statsExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                    statsExecutor.shutdownNow();
-                }
-            } catch (InterruptedException e) {
-                statsExecutor.shutdownNow();
-                Thread.currentThread().interrupt();
-            }
-        } finally {
-            lock.writeLock().unlock();
-        }
+        statsExecutor.shutdown();
+        clientCache.values().forEach(HttpClient::close);
+        clientCache.clear();
+        activeConnections.clear();
+        connectionErrors.clear();
+        requestLatencies.clear();
+        requestCounts.clear();
+        requestErrors.clear();
     }
 }

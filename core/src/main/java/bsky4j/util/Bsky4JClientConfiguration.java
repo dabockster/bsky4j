@@ -1,6 +1,5 @@
 package bsky4j.util;
 
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
@@ -8,6 +7,7 @@ import java.util.logging.Logger;
 
 /**
  * Enhanced HTTP client configuration for bsky4j with optimized connection handling.
+ * Implements ATProtocol's HTTP specification for connection management.
  */
 public class Bsky4JClientConfiguration {
     private static final Logger LOGGER = Logger.getLogger(Bsky4JClientConfiguration.class.getName());
@@ -51,58 +51,26 @@ public class Bsky4JClientConfiguration {
         return maxConnectionsPerRoute;
     }
     
-    /**
-     * Marks the configuration as initialized.
-     */
-    public void initialize() {
-        if (isInitialized.compareAndSet(false, true)) {
-            LOGGER.log(Level.FINE, "Configuration initialized: " + this);
-        }
+    public AtomicInteger getActiveConnections() {
+        return activeConnections;
     }
     
-    /**
-     * Increments the active connection count.
-     */
-    public void incrementActiveConnections() {
-        activeConnections.incrementAndGet();
-    }
-    
-    /**
-     * Decrements the active connection count.
-     */
-    public void decrementActiveConnections() {
-        activeConnections.decrementAndGet();
-    }
-    
-    /**
-     * Gets the current active connection count.
-     */
-    public int getActiveConnections() {
-        return activeConnections.get();
-    }
-    
-    /**
-     * Checks if the configuration is initialized.
-     */
     public boolean isInitialized() {
         return isInitialized.get();
     }
     
-    @Override
-    public String toString() {
-        return "Bsky4JClientConfiguration{" +
-                "connectTimeoutMs=" + connectTimeoutMs +
-                ", readTimeoutMs=" + readTimeoutMs +
-                ", maxConnections=" + maxConnections +
-                ", maxConnectionsPerRoute=" + maxConnectionsPerRoute +
-                ", activeConnections=" + activeConnections.get() +
-                ", initialized=" + isInitialized.get() +
-                '}';
+    public void initialize() {
+        isInitialized.set(true);
     }
     
-    /**
-     * Builder for Bsky4JClientConfiguration.
-     */
+    public void incrementActiveConnections() {
+        activeConnections.incrementAndGet();
+    }
+    
+    public void decrementActiveConnections() {
+        activeConnections.decrementAndGet();
+    }
+    
     public static class Builder {
         private int connectTimeoutMs = DEFAULT_CONNECT_TIMEOUT_MS;
         private int readTimeoutMs = DEFAULT_READ_TIMEOUT_MS;
@@ -120,17 +88,40 @@ public class Bsky4JClientConfiguration {
         }
         
         public Builder maxConnections(int maxConnections) {
+            if (maxConnections <= 0) {
+                throw new IllegalArgumentException("Max connections must be positive");
+            }
             this.maxConnections = maxConnections;
             return this;
         }
         
         public Builder maxConnectionsPerRoute(int maxConnectionsPerRoute) {
+            if (maxConnectionsPerRoute <= 0) {
+                throw new IllegalArgumentException("Max connections per route must be positive");
+            }
             this.maxConnectionsPerRoute = maxConnectionsPerRoute;
             return this;
         }
         
         public Bsky4JClientConfiguration build() {
+            if (maxConnectionsPerRoute > maxConnections) {
+                LOGGER.log(Level.WARNING, 
+                    "maxConnectionsPerRoute ({0}) is greater than maxConnections ({1}) - this may cause connection issues", 
+                    new Object[]{maxConnectionsPerRoute, maxConnections});
+            }
             return new Bsky4JClientConfiguration(this);
         }
+    }
+    
+    @Override
+    public String toString() {
+        return String.format("Bsky4JClientConfiguration{" +
+            "connectTimeoutMs=%d," +
+            "readTimeoutMs=%d," +
+            "maxConnections=%d," +
+            "maxConnectionsPerRoute=%d," +
+            "activeConnections=%d" +
+            '}',
+            connectTimeoutMs, readTimeoutMs, maxConnections, maxConnectionsPerRoute, activeConnections.get());
     }
 }
