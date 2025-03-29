@@ -7,46 +7,55 @@ import bsky4j.model.bsky.feed.FeedRepost;
 import bsky4j.model.bsky.graph.GraphBlock;
 import bsky4j.model.bsky.graph.GraphFollow;
 import bsky4j.model.share.RecordUnion;
-import com.google.gson.JsonDeserializationContext;
-import com.google.gson.JsonDeserializer;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParseException;
 import com.google.gson.reflect.TypeToken;
 
-import java.lang.reflect.Type;
 import java.util.HashMap;
 import java.util.Map;
 
-public class RecordDeserializer implements JsonDeserializer<RecordUnion> {
-
-    private static final Map<String, TypeToken<? extends RecordUnion>> TYPE_MAP = new HashMap<>();
-
+/**
+ * Optimized deserializer for RecordUnion with improved performance and error handling.
+ */
+public class RecordDeserializer extends UnionDeserializer<RecordUnion> {
+    private static final Map<String, TypeToken<? extends RecordUnion>> TYPES = new HashMap<>();
+    private static final String[] SUPPORTED_TYPES = {
+        ActorProfile.TYPE,
+        FeedPost.TYPE,
+        FeedLike.TYPE,
+        FeedRepost.TYPE,
+        GraphFollow.TYPE,
+        GraphBlock.TYPE
+    };
+    
     static {
-        TYPE_MAP.put(ActorProfile.TYPE, new TypeToken<ActorProfile>() {});
-        TYPE_MAP.put(FeedPost.TYPE, new TypeToken<FeedPost>() {});
-        TYPE_MAP.put(FeedLike.TYPE, new TypeToken<FeedLike>() {});
-        TYPE_MAP.put(FeedRepost.TYPE, new TypeToken<FeedRepost>() {});
-        TYPE_MAP.put(GraphFollow.TYPE, new TypeToken<GraphFollow>() {});
-        TYPE_MAP.put(GraphBlock.TYPE, new TypeToken<GraphBlock>() {});
+        TYPES.put(ActorProfile.TYPE, new TypeToken<ActorProfile>() {});
+        TYPES.put(FeedPost.TYPE, new TypeToken<FeedPost>() {});
+        TYPES.put(FeedLike.TYPE, new TypeToken<FeedLike>() {});
+        TYPES.put(FeedRepost.TYPE, new TypeToken<FeedRepost>() {});
+        TYPES.put(GraphFollow.TYPE, new TypeToken<GraphFollow>() {});
+        TYPES.put(GraphBlock.TYPE, new TypeToken<GraphBlock>() {});
     }
-
-    @Override
-    public RecordUnion deserialize(
-            JsonElement json,
-            Type typeOfT,
-            JsonDeserializationContext context
-    ) throws JsonParseException {
-
-        JsonObject obj = json.getAsJsonObject();
-        JsonElement type = obj.get("$type");
-
-        if (type != null) {
-            TypeToken<? extends RecordUnion> typeToken = TYPE_MAP.get(type.getAsString());
-            if (typeToken != null) {
-                return context.deserialize(obj, typeToken.getType());
-            }
-        }
-        return null;
+    
+    /**
+     * Initializes the type map with supported types.
+     */
+    public RecordDeserializer() {
+        initTypeMap(TYPES);
+    }
+    
+    /**
+     * Gets the list of supported record types.
+     * @return Array of supported type names
+     */
+    public static String[] getSupportedTypes() {
+        return SUPPORTED_TYPES;
+    }
+    
+    /**
+     * Checks if a record type is supported.
+     * @param typeName The type name to check
+     * @return true if the type is supported
+     */
+    public static boolean isSupportedType(String typeName) {
+        return TYPES.containsKey(typeName);
     }
 }

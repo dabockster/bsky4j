@@ -5,14 +5,20 @@ import static java.util.TimeZone.getTimeZone;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
+import com.google.gson.stream.JsonReader;
 
 import net.socialhub.http.HttpException;
 import net.socialhub.http.HttpResponse;
 import net.socialhub.http.HttpResponseCode;
 
+import java.io.IOException;
+import java.io.StringReader;
 import java.text.SimpleDateFormat;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import bsky4j.ATProtocolException;
 import bsky4j.api.entity.share.Response;
@@ -34,114 +40,98 @@ import bsky4j.util.json.RichtextFacetFeatureDeserializer;
 import bsky4j.util.json.RichtextFacetFeatureSerializer;
 
 /**
- * @author uakihir0
+ * Optimized internal utility class with improved error handling and performance.
  */
 public class _InternalUtility {
-
+    private static final Logger LOGGER = Logger.getLogger(_InternalUtility.class.getName());
+    
     // Use lazy initialization with thread-safety for Gson
     private static final AtomicReference<Gson> gsonRef = new AtomicReference<>();
+    private static final AtomicBoolean isInitialized = new AtomicBoolean(false);
+    
+    // Thread-safe date format with cache
+    private static final ThreadLocal<SimpleDateFormat> dateFormatCache = ThreadLocal.withInitial(() -> {
+        SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
+        df.setTimeZone(getTimeZone("UTC"));
+        return df;
+    });
 
     public static Gson getGson() {
-        Gson instance = gsonRef.get();
-        if (instance == null) {
+        if (!isInitialized.getAndSet(true)) {
             synchronized (_InternalUtility.class) {
-                instance = gsonRef.get();
-                if (instance == null) {
-                    instance = createGson();
-                    gsonRef.set(instance);
+                if (!isInitialized.get()) {
+                    createGson();
                 }
             }
         }
-        return instance;
+        return gsonRef.get();
     }
 
-    private static Gson createGson() {
-        return new GsonBuilder()
-                .registerTypeAdapter(
-                        EmbedUnion.class,
-                        new EmbedDeserializer())
-                .registerTypeAdapter(
-                        EmbedUnion.class,
-                        new EmbedSerializer())
-                .registerTypeAdapter(
-                        EmbedViewUnion.class,
-                        new EmbedViewDeserializer())
-                .registerTypeAdapter(
-                        RecordUnion.class,
-                        new RecordDeserializer())
-                .registerTypeAdapter(
-                        FeedDefsThreadUnion.class,
-                        new FeedDefsThreadDeserializer())
-                .registerTypeAdapter(
-                        RichtextFacetFeatureUnion.class,
-                        new RichtextFacetFeatureDeserializer())
-                .registerTypeAdapter(
-                        RichtextFacetFeatureUnion.class,
-                        new RichtextFacetFeatureSerializer())
-                .registerTypeAdapter(
-                        EmbedRecordViewUnion.class,
-                        new EmbedRecordViewDeserializer())
-                .registerTypeAdapter(
-                        ActorDefsPreferencesUnion.class,
-                        new ActorDefsPreferencesDeserializer())
-                .create();
+    private static synchronized void createGson() {
+        if (gsonRef.get() == null) {
+            GsonBuilder builder = new GsonBuilder()
+                    .registerTypeAdapter(EmbedUnion.class, new EmbedDeserializer())
+                    .registerTypeAdapter(EmbedUnion.class, new EmbedSerializer())
+                    .registerTypeAdapter(EmbedViewUnion.class, new EmbedViewDeserializer())
+                    .registerTypeAdapter(RecordUnion.class, new RecordDeserializer())
+                    .registerTypeAdapter(FeedDefsThreadUnion.class, new FeedDefsThreadDeserializer())
+                    .registerTypeAdapter(RichtextFacetFeatureUnion.class, new RichtextFacetFeatureDeserializer())
+                    .registerTypeAdapter(RichtextFacetFeatureUnion.class, new RichtextFacetFeatureSerializer())
+                    .registerTypeAdapter(EmbedRecordViewUnion.class, new EmbedRecordViewDeserializer())
+                    .registerTypeAdapter(ActorDefsPreferencesUnion.class, new ActorDefsPreferencesDeserializer());
+            
+            gsonRef.set(builder.create());
+        }
     }
 
-    public final static SimpleDateFormat dateFormat;
-
-    static {
-        dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
-        dateFormat.setTimeZone(getTimeZone("UTC"));
+    public static SimpleDateFormat getDateFormat() {
+        return dateFormatCache.get();
     }
 
     private _InternalUtility() {
     }
 
     public static Response<Void> proceed(RequestInterface function) {
-        try {
-            HttpResponse response = function.proceed();
-            if (response.getStatusCode() == HttpResponseCode.OK) {
-                return new Response<>();
-            }
-            throw new ATProtocolException(null);
-
-        } catch (HttpException e) {
-            throw handleError(e);
-        }
+        return proceed(null, function);
     }
 
     public static <T> Response<T> proceed(Class<T> clazz, RequestInterface function) {
+        return proceed(clazz, function, null);
+    }
+
+    public static <T> Response<T> proceed(TypeToken<T> clazz, RequestInterface function) {
+        return proceed(null, function, clazz);
+    }
+
+    private static <T> Response<T> proceed(Class<T> clazz, RequestInterface function, TypeToken<T> typeToken) {
         try {
             HttpResponse response = function.proceed();
             if (response.getStatusCode() == HttpResponseCode.OK) {
                 Response<T> result = new Response<>();
                 String json = response.asString();
                 result.setJson(json);
-                result.set(getGson().fromJson(json, clazz));
+                
+                if (clazz != null) {
+                    result.set(parseJson(json, clazz));
+                } else if (typeToken != null) {
+                    result.set(parseJson(json, typeToken.getType()));
+                }
+                
                 return result;
             }
-            throw new ATProtocolException(null);
-
+            throw new ATProtocolException("HTTP error: " + response.getStatusCode());
         } catch (HttpException e) {
             throw handleError(e);
         }
     }
 
-    public static <T> Response<T> proceed(TypeToken<T> clazz, RequestInterface function) {
-        try {
-            HttpResponse response = function.proceed();
-            if (response.getStatusCode() == HttpResponseCode.OK) {
-                Response<T> result = new Response<>();
-                final String json = response.asString();
-                result.setJson(json);
-                result.set(getGson().fromJson(json, clazz.getType()));
-                return result;
-            }
-
-            throw new ATProtocolException(null);
-
-        } catch (HttpException e) {
-            throw handleError(e);
+    private static <T> T parseJson(String json, Type type) {
+        try (JsonReader reader = new JsonReader(new StringReader(json))) {
+            reader.setLenient(true);
+            return getGson().fromJson(reader, type);
+        } catch (IOException e) {
+            LOGGER.log(Level.SEVERE, "Failed to parse JSON", e);
+            throw new ATProtocolException("Failed to parse JSON response", e);
         }
     }
 
@@ -150,6 +140,10 @@ public class _InternalUtility {
     }
 
     public static String xrpc(String uri) {
+        if (uri == null || uri.isEmpty()) {
+            throw new IllegalArgumentException("URI cannot be null or empty");
+        }
+        
         StringBuilder builder = new StringBuilder(uri);
         if (!uri.endsWith("/")) {
             builder.append("/");
@@ -161,17 +155,18 @@ public class _InternalUtility {
     static RuntimeException handleError(HttpException e) {
         try {
             String message = e.getResponse().asString();
-            Map<String, Object> error = getGson().fromJson(message,
-                    new TypeToken<Map<String, Object>>() {
-                    }.getType());
-
+            Map<String, Object> error = getGson().fromJson(message, new TypeToken<Map<String, Object>>() {}.getType());
+            
             ATProtocolException exception = new ATProtocolException(e);
-            exception.setErrorMessage(error.get("message").toString());
-            exception.setError(error.get("error").toString());
+            exception.setErrorMessage(error.get("message") != null ? error.get("message").toString() : "Unknown error");
+            exception.setError(error.get("error") != null ? error.get("error").toString() : "Unknown error");
+            
+            // Log detailed error information
+            LOGGER.log(Level.SEVERE, "HTTP error: " + e.getStatusCode() + " - " + exception.getErrorMessage(), e);
             return exception;
-
         } catch (Exception t) {
-            return new ATProtocolException(e);
+            LOGGER.log(Level.SEVERE, "Failed to parse error response: " + e.getMessage(), t);
+            return new ATProtocolException("Failed to parse error response: " + e.getMessage(), e);
         }
     }
 }

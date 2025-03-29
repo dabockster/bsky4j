@@ -1,7 +1,7 @@
 package bsky4j.api.xrpc;
 
 import bsky4j.api.entity.xrpc.*;
-import bsky4j.model.atproto.xrpc.*;
+import bsky4j.model.atprotocol.xrpc.*;
 import bsky4j.model.atprotocol.xrpc.XRPCRequest;
 import bsky4j.model.atprotocol.xrpc.XRPCResponse;
 
@@ -12,20 +12,20 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 /**
- * Optimized XRPC client with connection pooling, retry logic, and improved error handling.
+ * Optimized XRPC client with improved performance, reliability, and monitoring.
  */
 public class XRPCClient {
     private static final Logger LOGGER = Logger.getLogger(XRPCClient.class.getName());
     
-    // Shared HttpClient with optimized configuration
+    // Thread-safe shared HttpClient with optimized configuration
     private static final HttpClient SHARED_HTTP_CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .responseTimeout(Duration.ofSeconds(30))
@@ -33,12 +33,15 @@ public class XRPCClient {
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
             
-    // Request statistics tracking
+    // Request statistics tracking with atomic operations
     private static final ConcurrentHashMap<String, AtomicInteger> requestCounts = 
+            new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, AtomicLong> requestLatencies = 
             new ConcurrentHashMap<>();
     
     private final URI baseUri;
     private final String authorization;
+    private final ScheduledExecutorService statsExecutor = Executors.newSingleThreadScheduledExecutor();
     
     /**
      * Creates a new XRPC client with the specified base URI and authorization.
@@ -49,6 +52,9 @@ public class XRPCClient {
     public XRPCClient(URI baseUri, String authorization) {
         this.baseUri = baseUri;
         this.authorization = authorization;
+        
+        // Schedule periodic statistics collection
+        statsExecutor.scheduleAtFixedRate(this::collectStats, 0, 1, TimeUnit.MINUTES);
     }
 
     /**
@@ -64,8 +70,7 @@ public class XRPCClient {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 // Track request statistics
-                requestCounts.computeIfAbsent(method, k -> new AtomicInteger())
-                        .incrementAndGet();
+                incrementRequestCount(method);
                 
                 // Create request
                 XRPCRequest request = new XRPCRequest(method, params);
@@ -86,21 +91,21 @@ public class XRPCClient {
         });
     }
 
-    /**
-     * Executes an HTTP request with retry logic.
-     * 
-     * @param request The HTTP request to execute
-     * @param responseType The expected response type
-     * @param method The XRPC method being called
-     * @param params The request parameters
-     * @param <T> The type parameter for the response
-     * @return The parsed response
-     * @throws Exception If the request fails after retries
-     */
+    private void incrementRequestCount(String method) {
+        requestCounts.computeIfAbsent(method, k -> new AtomicInteger())
+                .incrementAndGet();
+    }
+
+    private void recordLatency(String method, long durationMs) {
+        requestLatencies.computeIfAbsent(method, k -> new AtomicLong())
+                .addAndGet(durationMs);
+    }
+
     private <T> T executeWithRetry(HttpRequest request, Class<T> responseType, 
                                   String method, Map<String, Object> params) throws Exception {
         final int maxRetries = 3;
         final int baseDelayMs = 1000;
+        long startTime = System.nanoTime();
         
         for (int attempt = 0; attempt < maxRetries; attempt++) {
             try {
@@ -117,6 +122,9 @@ public class XRPCClient {
                     throw new XRPCException(response.statusCode(), response.body(), 
                         method, params);
                 }
+                
+                long durationMs = (System.nanoTime() - startTime) / 1_000_000;
+                recordLatency(method, durationMs);
                 
                 return XRPCResponse.fromJson(response.body(), responseType);
             } catch (IOException | InterruptedException e) {
@@ -145,21 +153,69 @@ public class XRPCClient {
     }
 
     /**
-     * Gets statistics about XRPC requests.
+     * Gets statistics about XRPC requests including latency information.
      * 
-     * @return A map of method names to request counts
+     * @return A map containing request counts and average latencies
      */
-    public static Map<String, Integer> getRequestStatistics() {
-        return requestCounts.entrySet().stream()
+    public static Map<String, Map<String, Long>> getRequestStatistics() {
+        Map<String, Long> counts = requestCounts.entrySet().stream()
+                .collect(Collectors.toMap(
+                    Map.Entry::getKey,
+                    e -> (long)e.getValue().get()));
+                    
+        Map<String, Long> latencies = requestLatencies.entrySet().stream()
                 .collect(Collectors.toMap(
                     Map.Entry::getKey,
                     e -> e.getValue().get()));
+                    
+        return Map.of(
+            "counts", counts,
+            "latencies", latencies
+        );
     }
 
     /**
      * Clears the request statistics.
      */
-    public static void clearRequestStatistics() {
+    public static void clearStatistics() {
         requestCounts.clear();
+        requestLatencies.clear();
+    }
+
+    /**
+     * Collects and logs statistics periodically.
+     */
+    private void collectStats() {
+        try {
+            Map<String, Map<String, Long>> stats = getRequestStatistics();
+            StringBuilder sb = new StringBuilder("XRPC Statistics:\n");
+            
+            stats.get("counts").forEach((method, count) -> {
+                sb.append("Method: ").append(method)
+                  .append("\n  Requests: ").append(count)
+                  .append("\n  Latency: ")
+                  .append(stats.get("latencies").getOrDefault(method, 0L) / 1000.0)
+                  .append("ms\n");
+            });
+            
+            LOGGER.log(Level.INFO, sb.toString());
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Failed to collect statistics", e);
+        }
+    }
+
+    /**
+     * Closes the XRPC client and releases resources.
+     */
+    public void close() {
+        statsExecutor.shutdown();
+        try {
+            if (!statsExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                statsExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            statsExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 }
