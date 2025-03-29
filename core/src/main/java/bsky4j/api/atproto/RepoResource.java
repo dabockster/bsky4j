@@ -6,7 +6,18 @@ import bsky4j.api.entity.atproto.repo.RepoDeleteRecordRequest;
 import bsky4j.api.entity.atproto.repo.RepoGetRecordRequest;
 import bsky4j.api.entity.atproto.repo.RepoGetRecordResponse;
 import bsky4j.api.entity.atproto.repo.RepoListRecordsRequest;
+import bsky4j.api.entity.atproto.repo.RepoApplyWritesRequest;
+import bsky4j.api.entity.atproto.repo.RepoDescribeRepoResponse;
+import bsky4j.api.entity.atproto.repo.RepoCreateRecordRequest;
+import bsky4j.api.entity.atproto.repo.RepoCreateRecordResponse;
+import bsky4j.api.entity.atproto.repo.RepoDeleteRecordRequest;
+import bsky4j.api.entity.atproto.repo.RepoGetRecordRequest;
+import bsky4j.api.entity.atproto.repo.RepoGetRecordResponse;
+import bsky4j.api.entity.atproto.repo.RepoListMissingBlobsRequest;
+import bsky4j.api.entity.atproto.repo.RepoListMissingBlobsResponse;
+import bsky4j.api.entity.atproto.repo.RepoListRecordsRequest;
 import bsky4j.api.entity.atproto.repo.RepoListRecordsResponse;
+import bsky4j.api.entity.atproto.repo.RepoPutRecordRequest;
 import bsky4j.api.entity.atproto.repo.RepoUploadBlobRequest;
 import bsky4j.api.entity.atproto.repo.RepoUploadBlobResponse;
 import bsky4j.api.entity.share.Response;
@@ -20,7 +31,7 @@ public interface RepoResource {
     /**
      * Apply a batch transaction of creates, updates, and deletes.
      */
-    void applyWrites();
+    Response<Void> applyWrites(RepoApplyWritesRequest request);
 
     /**
      * Create a new record.
@@ -35,12 +46,17 @@ public interface RepoResource {
     /**
      * Get information about the repo, including the list of collections.
      */
-    void describeRepo();
+    Response<RepoDescribeRepoResponse> describeRepo(String repo);
 
     /**
      * Get a record.
      */
     Response<RepoGetRecordResponse> getRecord(RepoGetRecordRequest request);
+
+    /**
+     * List missing blobs in a repo.
+     */
+    Response<RepoListMissingBlobsResponse> listMissingBlobs(RepoListMissingBlobsRequest request);
 
     /**
      * List a range of records in a collection.
@@ -50,7 +66,7 @@ public interface RepoResource {
     /**
      * Write a record, creating or updating it as needed.
      */
-    void putRecord();
+    Response<Void> putRecord(RepoPutRecordRequest request);
 
     /**
      * Upload a new blob to be added to repo in a later request.

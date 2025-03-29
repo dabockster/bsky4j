@@ -1,5 +1,8 @@
 package bsky4j.api.bsky;
 
+import bsky4j.api.entity.bsky.actor.ActorSearchActorsTypeaheadRequest;
+import bsky4j.api.entity.bsky.actor.ActorSearchActorsTypeaheadResponse;
+import bsky4j.api.entity.share.Response;
 import bsky4j.api.entity.bsky.actor.ActorGetPreferencesRequest;
 import bsky4j.api.entity.bsky.actor.ActorGetPreferencesResponse;
 import bsky4j.api.entity.bsky.actor.ActorGetProfileRequest;
@@ -26,6 +29,11 @@ public interface ActorResource {
      *
      */
     Response<ActorGetProfilesResponse> getProfiles(ActorGetProfilesRequest request);
+
+    /**
+     * Find actors matching search criteria (typeahead).
+     */
+    Response<ActorSearchActorsTypeaheadResponse> searchActorsTypeahead(ActorSearchActorsTypeaheadRequest request);
 
     /**
      * Get private preferences attached to the account.

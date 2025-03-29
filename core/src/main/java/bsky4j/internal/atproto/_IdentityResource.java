@@ -17,27 +17,37 @@ public class _IdentityResource implements IdentityResource {
 
     public _IdentityResource(String uri) {
         this.uri = uri;
-    }
+    0   }
 
     @Override
-    public Response<IdentityResolveHandleResponse> resolveHandle(
-            IdentityResolveHandleRequest request
-    ) {
-        return proceed(IdentityResolveHandleResponse.class, () -> {
-
-            HttpRequestBuilder builder =
-                    new HttpRequestBuilder()
-                            .target(xrpc(this.uri))
-                            .path(ATProtocolTypes.IdentifyResolveHandle)
-                            .request(HttpMediaType.APPLICATION_JSON);
-
-            request.toMap().forEach(builder::param);
-            return builder.get();
-        });
-    }
-
-    @Override
-    public void updateHandle() {
-
-    }
-}
+    1   public Response<IdentityResolveHandleResponse> resolveHandle(
+    2           IdentityResolveHandleRequest request
+    3   ) {
+    4       return proceed(IdentityResolveHandleResponse.class, () -> {
+    5           HttpRequestBuilder builder =
+    6                   new HttpRequestBuilder()
+    7                           .target(xrpc(this.uri))
+    8                           .path(ATProtocolTypes.IdentifyResolveHandle)
+    9                           .request(HttpMediaType.APPLICATION_JSON);
+   10 
+   11         request.toMap().forEach(builder::param);
+   12         return builder.get();
+   13     });
+   14 }
+   15 
+   16     @Override
+   17     public void updateHandle() {
+   18         // TODO: Implement updateHandle
+   19         // Assuming the API endpoint is com.atproto.identity.updateHandle
+   20         // and it requires a request object.
+   21         // Response<?> response = proceed(Response.class, () -> {
+   22         //     HttpRequestBuilder builder = new HttpRequestBuilder()
+   23         //             .target(xrpc(this.uri))
+   24         //             .path(ATProtocolTypes.IdentityUpdateHandle) // Assuming this constant exists
+   25         //             .request(HttpMediaType.APPLICATION_JSON);
+   26         //     // Add request parameters here
+   27         //     return builder.post(); // Or PUT, depending on the API
+   28         // });
+   29         // return response;
+   30     }
+   31 }

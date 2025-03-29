@@ -1,5 +1,19 @@
 package bsky4j.api.bsky;
 
+import bsky4j.api.entity.bsky.feed.FeedGetActorFeedsRequest;
+import bsky4j.api.entity.bsky.feed.FeedGetActorFeedsResponse;
+import bsky4j.api.entity.bsky.feed.FeedGetActorLikesRequest;
+import bsky4j.api.entity.bsky.feed.FeedGetActorLikesResponse;
+import bsky4j.api.entity.bsky.feed.FeedGetAuthorFeedRequest;
+import bsky4j.api.entity.bsky.feed.FeedGetAuthorFeedResponse;
+import bsky4j.api.entity.bsky.feed.FeedGetFeedRequest;
+import bsky4j.api.entity.bsky.feed.FeedGetFeedResponse;
+import bsky4j.api.entity.bsky.feed.FeedGetLikesRequest;
+import bsky4j.api.entity.bsky.feed.FeedGetLikesResponse;
+import bsky4j.api.entity.bsky.feed.FeedGetPostsRequest;
+import bsky4j.api.entity.bsky.feed.FeedGetPostsResponse;
+import bsky4j.api.entity.bsky.feed.FeedGetPostThreadRequest;
+import bsky4j.api.entity.bsky.feed.FeedGetPostThreadResponse;
 import bsky4j.api.entity.bsky.feed.*;
 import bsky4j.api.entity.share.Response;
 
@@ -21,6 +35,7 @@ public interface FeedResource {
 
     /**
      *
+Get a list of posts liked by an actor.
      */
     Response<FeedGetPostThreadResponse> getPostThread(FeedGetPostThreadRequest request);
 
