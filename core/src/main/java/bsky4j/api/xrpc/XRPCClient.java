@@ -1,9 +1,9 @@
 package bsky4j.api.xrpc;
 
-import bsky4j.api.entity.xrpc.*;
-import bsky4j.model.atprotocol.xrpc.*;
-import bsky4j.model.atprotocol.xrpc.XRPCRequest;
-import bsky4j.model.atprotocol.xrpc.XRPCResponse;
+import bsky4j.api.entity.share.AuthRequest;
+import bsky4j.api.entity.share.RefreshAuthRequest;
+import bsky4j.api.entity.share.RefreshSessionRequest;
+import bsky4j.api.entity.share.RefreshSessionResponse;
 
 import java.io.IOException;
 import java.net.URI;
@@ -13,17 +13,15 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
-
-import bsky4j.util.HttpClientManager;
-import bsky4j.util.Bsky4JClientConfiguration;
 
 /**
  * Optimized XRPC client with improved performance, reliability, and monitoring.
+ * Implements ATProtocol's OAuth specification for token handling.
  */
 public class XRPCClient {
     private static final Logger LOGGER = Logger.getLogger(XRPCClient.class.getName());
@@ -47,13 +45,16 @@ public class XRPCClient {
             new ConcurrentHashMap<>();
             
     private final URI baseUri;
+    private final AuthRequest authRequest;
     private final String authorization;
     private final ScheduledExecutorService statsExecutor = Executors.newSingleThreadScheduledExecutor();
-    private final AtomicReference<HttpClient> currentClient = new AtomicReference<>();
+    private final AtomicBoolean isRefreshing = new AtomicBoolean(false);
+    private final AtomicLong lastRefreshTime = new AtomicLong(0);
+    private final long refreshIntervalMs = 1000 * 60 * 2; // 2 minutes
     private final Bsky4JClientConfiguration clientConfig;
     
-    public XRPCClient(URI baseUri, String authorization) {
-        this(baseUri, authorization, Bsky4JClientConfiguration.builder()
+    public XRPCClient(URI baseUri, AuthRequest authRequest) {
+        this(baseUri, authRequest, Bsky4JClientConfiguration.builder()
                 .connectTimeoutMs(15000)
                 .readTimeoutMs(30000)
                 .maxConnections(100)
@@ -61,13 +62,18 @@ public class XRPCClient {
                 .build());
     }
     
-    public XRPCClient(URI baseUri, String authorization, Bsky4JClientConfiguration config) {
+    public XRPCClient(URI baseUri, AuthRequest authRequest, Bsky4JClientConfiguration config) {
         this.baseUri = baseUri;
-        this.authorization = authorization;
+        this.authRequest = authRequest;
+        this.authorization = authRequest.getBearerToken();
         this.clientConfig = config;
         
         // Initialize client
         currentClient.set(HttpClientManager.getInstance().getClient(config));
+        
+        // Schedule periodic token refresh
+        statsExecutor.scheduleAtFixedRate(this::refreshToken, 
+            refreshIntervalMs, refreshIntervalMs, TimeUnit.MILLISECONDS);
         
         // Schedule periodic statistics collection
         statsExecutor.scheduleAtFixedRate(this::collectStats, 0, 1, TimeUnit.MINUTES);
@@ -218,6 +224,102 @@ public class XRPCClient {
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "Failed to collect statistics", e);
         }
+    }
+
+    /**
+     * Refreshes the authentication tokens.
+     */
+    private void refreshToken() {
+        if (isRefreshing.getAndSet(true)) {
+            return;
+        }
+        
+        try {
+            // Create refresh request
+            RefreshSessionRequest refreshRequest = new RefreshSessionRequest(authRequest.getRefreshJwt());
+            
+            // Make refresh request
+            RefreshSessionResponse response = request(
+                "POST",
+                "/xrpc/com.atproto.server.refreshSession",
+                refreshRequest,
+                RefreshSessionResponse.class
+            );
+            
+            // Update tokens
+            authRequest.clearCache();
+            lastRefreshTime.set(System.currentTimeMillis());
+            authorization = authRequest.getBearerToken();
+            
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Failed to refresh tokens", e);
+        } finally {
+            isRefreshing.set(false);
+        }
+    }
+
+    /**
+     * Makes an XRPC request with proper token handling and refresh.
+     * 
+     * @param method The HTTP method
+     * @param path The XRPC path
+     * @param body The request body
+     * @param <T> The response type
+     * @return The response object
+     * @throws Exception if the request fails
+     */
+    public <T> T request(String method, String path, Object body, Class<T> responseType) throws Exception {
+        // Ensure we have a valid token
+        if (authRequest.isExpired()) {
+            refreshToken();
+        }
+        
+        // Build request
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(baseUri.resolve(path))
+                .header("Authorization", authorization)
+                .header("Content-Type", "application/json")
+                .method(method, body == null ? 
+                    HttpRequest.BodyPublishers.noBody() : 
+                    HttpRequest.BodyPublishers.ofString(GSON.toJson(body)))
+                .build();
+        
+        // Track statistics
+        String requestKey = method + " " + path;
+        requestCounts.computeIfAbsent(requestKey, k -> new AtomicInteger(0)).incrementAndGet();
+        
+        long startTime = System.currentTimeMillis();
+        try {
+            HttpResponse<String> response = SHARED_HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+            long latency = System.currentTimeMillis() - startTime;
+            requestLatencies.computeIfAbsent(requestKey, k -> new AtomicLong(0)).addAndGet(latency);
+            
+            if (response.statusCode() == 401) {
+                // Token expired, refresh and retry
+                refreshToken();
+                return request(method, path, body, responseType);
+            }
+            
+            return GSON.fromJson(response.body(), responseType);
+        } catch (Exception e) {
+            requestErrors.computeIfAbsent(requestKey, k -> new AtomicInteger(0)).incrementAndGet();
+            throw e;
+        }
+    }
+    
+    /**
+     * Gets statistics about the client's performance.
+     * 
+     * @return Map containing client statistics
+     */
+    public Map<String, Object> getStatistics() {
+        return Map.of(
+            "requestCount", requestCounts.values().stream().mapToInt(AtomicInteger::get).sum(),
+            "requestErrors", requestErrors.values().stream().mapToInt(AtomicInteger::get).sum(),
+            "averageLatencyMs", requestLatencies.values().stream().mapToLong(AtomicLong::get).average().orElse(0),
+            "lastRefreshTime", lastRefreshTime.get(),
+            "tokenType", authRequest.getTokenType()
+        );
     }
 
     /**

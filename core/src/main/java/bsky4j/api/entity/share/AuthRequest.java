@@ -12,35 +12,48 @@ import java.util.logging.Logger;
 
 /**
  * Optimized authentication request with improved performance and security.
+ * Implements ATProtocol's OAuth specification for token handling.
  */
 public class AuthRequest {
     private static final Logger LOGGER = Logger.getLogger(AuthRequest.class.getName());
     private static final Gson GSON = new Gson();
     
     private final String accessJwt;
+    private final String refreshJwt;
     private final AtomicReference<String> cachedDid = new AtomicReference<>();
     private final AtomicReference<Long> cacheTimestamp = new AtomicReference<>(0L);
     private final AtomicBoolean isCacheValid = new AtomicBoolean(false);
     private static final long CACHE_DURATION_MS = 1000 * 60 * 5; // 5 minutes
     
     /**
-     * Creates a new AuthRequest with the given access JWT.
+     * Creates a new AuthRequest with both access and refresh JWTs.
      * 
-     * @param accessJwt The access JWT token
+     * @param accessJwt The access JWT token (type: at+jwt)
+     * @param refreshJwt The refresh JWT token (type: refresh+jwt)
      */
-    public AuthRequest(String accessJwt) {
+    public AuthRequest(String accessJwt, String refreshJwt) {
         this.accessJwt = accessJwt;
+        this.refreshJwt = refreshJwt;
         // Pre-cache DID on creation
         getDid();
     }
     
     /**
-     * Gets the access JWT token.
+     * Gets the access JWT token (type: at+jwt).
      * 
      * @return The access JWT token
      */
     public String getAccessJwt() {
         return accessJwt;
+    }
+    
+    /**
+     * Gets the refresh JWT token (type: refresh+jwt).
+     * 
+     * @return The refresh JWT token
+     */
+    public String getRefreshJwt() {
+        return refreshJwt;
     }
     
     /**
@@ -153,7 +166,27 @@ public class AuthRequest {
             "isExpired", isExpired(),
             "remainingTimeMs", getRemainingTime(),
             "cacheValid", isCacheValid.get(),
-            "cacheAgeMs", System.currentTimeMillis() - cacheTimestamp.get()
+            "cacheAgeMs", System.currentTimeMillis() - cacheTimestamp.get(),
+            "tokenType", getTokenType()
         );
+    }
+    
+    /**
+     * Gets the token type (at+jwt or refresh+jwt).
+     * 
+     * @return The token type
+     */
+    public String getTokenType() {
+        try {
+            String encodedJson = getAccessJwt().split("\\.")[1];
+            String decodedJson = new String(Base64.getDecoder().decode(encodedJson));
+            Map<String, String> jsonMap = GSON.fromJson(decodedJson,
+                    new TypeToken<Map<String, String>>() {}.getType());
+            
+            return jsonMap.get("typ");
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Failed to get token type", e);
+            return null;
+        }
     }
 }

@@ -9,17 +9,22 @@ import com.google.gson.reflect.TypeToken;
 
 import java.lang.reflect.Type;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
+import java.util.Collections;
 
 /**
  * Optimized base deserializer for union types with improved performance and error handling.
+ * Implements ATProtocol's Lexicon specification for union types.
  */
 public abstract class UnionDeserializer<T> implements JsonDeserializer<T> {
     private static final Logger LOGGER = Logger.getLogger(UnionDeserializer.class.getName());
+    private static final String TYPE_FIELD = "$type";
     
     protected final ConcurrentHashMap<String, TypeToken<? extends T>> typeMap = new ConcurrentHashMap<>();
     protected final ConcurrentHashMap<String, AtomicInteger> deserializationStats = new ConcurrentHashMap<>();
@@ -44,69 +49,63 @@ public abstract class UnionDeserializer<T> implements JsonDeserializer<T> {
     
     @Override
     public T deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) {
+        if (json == null || !json.isJsonObject()) {
+            errorCount.incrementAndGet();
+            throw new JsonParseException("Invalid JSON input for union type");
+        }
+        
         long startTime = System.nanoTime();
+        JsonObject obj = json.getAsJsonObject();
+        JsonElement typeElement = obj.get(TYPE_FIELD);
+        
+        if (typeElement == null || !typeElement.isJsonPrimitive()) {
+            errorCount.incrementAndGet();
+            throw new JsonParseException("Missing or invalid $type field in JSON");
+        }
+        
+        String type = typeElement.getAsString();
+        TypeToken<? extends T> typeToken = typeMap.get(type);
+        
+        if (typeToken == null) {
+            errorCount.incrementAndGet();
+            throw new JsonParseException("Unsupported type: " + type);
+        }
         
         try {
-            JsonObject obj = json.getAsJsonObject();
-            JsonElement typeElement = obj.get("$type");
-            
-            if (typeElement == null) {
-                throw new JsonParseException("Missing $type field");
-            }
-            
-            String typeName = typeElement.getAsString();
-            TypeToken<? extends T> typeToken = typeMap.get(typeName);
-            
-            if (typeToken == null) {
-                throw new JsonParseException("Unknown type: " + typeName);
-            }
-            
             T result = context.deserialize(obj, typeToken.getType());
-            recordDeserializationSuccess(typeName, startTime);
-            return result;
             
+            // Update statistics
+            deserializationStats.get(type).incrementAndGet();
+            long latency = System.nanoTime() - startTime;
+            deserializationLatencies.get(type).addAndGet(latency);
+            totalDeserializationTime.addAndGet(latency);
+            totalDeserializationCount.incrementAndGet();
+            
+            return result;
         } catch (Exception e) {
             errorCount.incrementAndGet();
-            LOGGER.log(Level.WARNING, "Deserialization error", e);
-            throw new JsonParseException("Failed to deserialize", e);
+            LOGGER.log(Level.WARNING, "Failed to deserialize type " + type + ": " + e.getMessage(), e);
+            throw new JsonParseException("Failed to deserialize type " + type, e);
         }
     }
     
     /**
-     * Records a successful deserialization.
+     * Gets statistics about deserialization performance.
      * 
-     * @param typeName The type name
-     * @param startTime The start time in nanoseconds
-     */
-    protected void recordDeserializationSuccess(String typeName, long startTime) {
-        deserializationStats.computeIfAbsent(typeName, k -> new AtomicInteger(0))
-                          .incrementAndGet();
-        
-        deserializationLatencies.computeIfAbsent(typeName, k -> new AtomicLong(0))
-                              .addAndGet(System.nanoTime() - startTime);
-        
-        totalDeserializationTime.addAndGet(System.nanoTime() - startTime);
-        totalDeserializationCount.incrementAndGet();
-    }
-    
-    /**
-     * Gets statistics about deserialization operations.
-     * 
-     * @return A map containing deserialization counts per type
+     * @return Map containing deserialization statistics
      */
     public Map<String, Object> getStatistics() {
         return Map.of(
             "totalDeserializations", totalDeserializationCount.get(),
-            "errors", errorCount.get(),
-            "averageTimeNs", totalDeserializationCount.get() > 0 ? 
+            "totalErrors", errorCount.get(),
+            "averageLatencyNs", totalDeserializationCount.get() > 0 ? 
                 totalDeserializationTime.get() / totalDeserializationCount.get() : 0,
-            "perTypeStats", typeMap.keySet().stream().collect(Collectors.toMap(
+            "typeStats", typeMap.keySet().stream().collect(Collectors.toMap(
                 type -> type,
                 type -> Map.of(
-                    "count", deserializationStats.getOrDefault(type, new AtomicInteger(0)).get(),
-                    "averageTimeNs", deserializationStats.getOrDefault(type, new AtomicInteger(0)).get() > 0 ?
-                        deserializationLatencies.getOrDefault(type, new AtomicLong(0)).get() /
-                        deserializationStats.get(type).get() : 0
+                    "count", deserializationStats.get(type).get(),
+                    "averageLatencyNs", deserializationStats.get(type).get() > 0 ? 
+                        deserializationLatencies.get(type).get() / deserializationStats.get(type).get() : 0
                 )
             ))
         );
@@ -116,10 +115,32 @@ public abstract class UnionDeserializer<T> implements JsonDeserializer<T> {
      * Clears all deserialization statistics.
      */
     public void clearStatistics() {
-        deserializationStats.replaceAll((k, v) -> new AtomicInteger(0));
-        deserializationLatencies.replaceAll((k, v) -> new AtomicLong(0));
-        totalDeserializationTime.set(0);
         totalDeserializationCount.set(0);
         errorCount.set(0);
+        totalDeserializationTime.set(0);
+        
+        typeMap.keySet().forEach(type -> {
+            deserializationStats.get(type).set(0);
+            deserializationLatencies.get(type).set(0);
+        });
+    }
+    
+    /**
+     * Gets the supported types for this union.
+     * 
+     * @return Set of supported type names
+     */
+    public Set<String> getSupportedTypes() {
+        return Collections.unmodifiableSet(typeMap.keySet());
+    }
+    
+    /**
+     * Checks if a type is supported by this union.
+     * 
+     * @param type The type name to check
+     * @return true if the type is supported
+     */
+    public boolean isTypeSupported(String type) {
+        return typeMap.containsKey(type);
     }
 }

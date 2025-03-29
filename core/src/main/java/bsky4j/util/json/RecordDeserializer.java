@@ -1,15 +1,22 @@
 package bsky4j.util.json;
 
-import bsky4j.model.bsky.actor.ActorProfile;
-import bsky4j.model.bsky.feed.FeedLike;
-import bsky4j.model.bsky.feed.FeedPost;
-import bsky4j.model.bsky.feed.FeedRepost;
-import bsky4j.model.bsky.graph.GraphBlock;
-import bsky4j.model.bsky.graph.GraphFollow;
-import bsky4j.model.share.RecordUnion;
+import bsky4j.api.entity.record.ActorProfile;
+import bsky4j.api.entity.record.FeedLike;
+import bsky4j.api.entity.record.FeedPost;
+import bsky4j.api.entity.record.FeedRepost;
+import bsky4j.api.entity.record.GraphBlock;
+import bsky4j.api.entity.record.GraphFollow;
+import bsky4j.api.entity.record.RecordUnion;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonDeserializationContext;
+import com.google.gson.JsonDeserializer;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
 import com.google.gson.reflect.TypeToken;
 
-import java.util.HashMap;
+import java.lang.reflect.Type;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -19,20 +26,14 @@ import java.util.logging.Logger;
 
 /**
  * Optimized deserializer for RecordUnion with improved performance and error handling.
+ * Implements ATProtocol's Lexicon specification for record types.
  */
-public class RecordDeserializer extends UnionDeserializer<RecordUnion> {
+public class RecordDeserializer implements JsonDeserializer<RecordUnion> {
     private static final Logger LOGGER = Logger.getLogger(RecordDeserializer.class.getName());
+    private static final Gson GSON = new Gson();
+    private static final String TYPE_FIELD = "$type";
     
     private static final Map<String, TypeToken<? extends RecordUnion>> TYPES = new ConcurrentHashMap<>();
-    private static final String[] SUPPORTED_TYPES = {
-        ActorProfile.TYPE,
-        FeedPost.TYPE,
-        FeedLike.TYPE,
-        FeedRepost.TYPE,
-        GraphFollow.TYPE,
-        GraphBlock.TYPE
-    };
-    
     private static final Map<String, AtomicInteger> deserializationStats = new ConcurrentHashMap<>();
     private static final Map<String, AtomicLong> deserializationLatencies = new ConcurrentHashMap<>();
     private static final AtomicInteger totalDeserializationCount = new AtomicInteger(0);
@@ -48,167 +49,104 @@ public class RecordDeserializer extends UnionDeserializer<RecordUnion> {
     }
     
     /**
-     * Initializes the type map with supported types.
-     */
-    public RecordDeserializer() {
-        initTypeMap(TYPES);
-    }
-    
-    /**
      * Gets the list of supported record types.
+     * 
      * @return Array of supported type names
      */
     public static String[] getSupportedTypes() {
-        return SUPPORTED_TYPES;
+        return TYPES.keySet().toArray(new String[0]);
     }
     
     /**
      * Checks if a record type is supported.
-     * @param typeName The type name to check
+     * 
+     * @param type The type name to check
      * @return true if the type is supported
      */
-    public static boolean isSupportedType(String typeName) {
-        return TYPES.containsKey(typeName);
+    public static boolean isTypeSupported(String type) {
+        return TYPES.containsKey(type);
+    }
+    
+    @Override
+    public RecordUnion deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) {
+        if (json == null || !json.isJsonObject()) {
+            errorCount.incrementAndGet();
+            throw new JsonParseException("Invalid JSON input for record");
+        }
+        
+        long startTime = System.nanoTime();
+        JsonObject obj = json.getAsJsonObject();
+        JsonElement typeElement = obj.get(TYPE_FIELD);
+        
+        if (typeElement == null || !typeElement.isJsonPrimitive()) {
+            errorCount.incrementAndGet();
+            throw new JsonParseException("Missing or invalid $type field in JSON");
+        }
+        
+        String type = typeElement.getAsString();
+        TypeToken<? extends RecordUnion> typeToken = TYPES.get(type);
+        
+        if (typeToken == null) {
+            errorCount.incrementAndGet();
+            throw new JsonParseException("Unsupported record type: " + type);
+        }
+        
+        try {
+            RecordUnion result = context.deserialize(obj, typeToken.getType());
+            
+            // Update statistics
+            deserializationStats.computeIfAbsent(type, k -> new AtomicInteger(0))
+                              .incrementAndGet();
+            long latency = System.nanoTime() - startTime;
+            deserializationLatencies.computeIfAbsent(type, k -> new AtomicLong(0))
+                                  .addAndGet(latency);
+            totalDeserializationCount.incrementAndGet();
+            
+            return result;
+        } catch (Exception e) {
+            errorCount.incrementAndGet();
+            LOGGER.log(Level.WARNING, "Failed to deserialize record type " + type + ": " + e.getMessage(), e);
+            throw new JsonParseException("Failed to deserialize record type " + type, e);
+        }
     }
     
     /**
-     * Gets deserialization statistics.
+     * Gets statistics about deserialization performance.
+     * 
      * @return Map containing deserialization statistics
      */
-    public static Map<String, Object> getStatistics() {
+    public Map<String, Object> getStatistics() {
         return Map.of(
             "totalDeserializations", totalDeserializationCount.get(),
             "totalErrors", errorCount.get(),
-            "typeStats", deserializationStats.entrySet().stream()
-                .collect(Collectors.toMap(
-                    Map.Entry::getKey,
-                    entry -> Map.of(
-                        "deserializations", entry.getValue().get(),
-                        "errors", getErrorCount(entry.getKey()),
-                        "averageLatencyNs", getAverageLatency(entry.getKey())
-                    )
-                )),
-            "overallAverageLatencyNs", getOverallAverageLatency()
+            "averageLatencyNs", totalDeserializationCount.get() > 0 ? 
+                deserializationLatencies.values().stream()
+                    .mapToLong(AtomicLong::get)
+                    .sum() / totalDeserializationCount.get() : 0,
+            "typeStats", TYPES.keySet().stream().collect(Collectors.toMap(
+                type -> type,
+                type -> Map.of(
+                    "count", deserializationStats.getOrDefault(type, new AtomicInteger(0)).get(),
+                    "averageLatencyNs", deserializationStats.getOrDefault(type, new AtomicInteger(0)).get() > 0 ?
+                        deserializationLatencies.getOrDefault(type, new AtomicLong(0)).get() /
+                        deserializationStats.get(type).get() : 0
+                )
+            ))
         );
     }
     
     /**
-     * Gets the most frequently deserialized record type.
-     * @return The most frequently deserialized type name
+     * Clears all deserialization statistics.
      */
-    public static String getMostFrequentType() {
-        return deserializationStats.entrySet().stream()
-            .max(Map.Entry.comparingByValue())
-            .map(Map.Entry::getKey)
-            .orElse(null);
-    }
-    
-    /**
-     * Gets the type with the highest error rate.
-     * @return The type with the highest error rate
-     */
-    public static String getHighestErrorRateType() {
-        return deserializationStats.entrySet().stream()
-            .map(entry -> {
-                AtomicInteger deserializations = deserializationStats.get(entry.getKey());
-                if (deserializations == null || deserializations.get() == 0) {
-                    return Map.entry(entry.getKey(), 0.0);
-                }
-                return Map.entry(entry.getKey(), (double) getErrorCount(entry.getKey()) / deserializations.get());
-            })
-            .max(Map.Entry.comparingByValue())
-            .map(Map.Entry::getKey)
-            .orElse(null);
-    }
-    
-    /**
-     * Records a deserialization success.
-     * @param typeName The type name
-     * @param startTime The start time in nanoseconds
-     */
-    private void recordDeserializationSuccess(String typeName, long startTime) {
-        deserializationStats.computeIfAbsent(typeName, k -> new AtomicInteger(0))
-                          .incrementAndGet();
-        
-        deserializationLatencies.computeIfAbsent(typeName, k -> new AtomicLong(0))
-                              .addAndGet(System.nanoTime() - startTime);
-        
-        totalDeserializationCount.incrementAndGet();
-    }
-    
-    /**
-     * Records a deserialization failure.
-     * @param typeName The type name
-     */
-    private void recordDeserializationFailure(String typeName) {
-        deserializationStats.computeIfAbsent(typeName, k -> new AtomicInteger(0))
-                          .incrementAndGet();
-        
-        errorCount.incrementAndGet();
-    }
-    
-    /**
-     * Gets the error count for a specific type.
-     * @param typeName The type name
-     * @return The error count
-     */
-    private static int getErrorCount(String typeName) {
-        AtomicInteger count = deserializationStats.get(typeName);
-        return count != null ? count.get() : 0;
-    }
-    
-    /**
-     * Gets the average latency for a specific type.
-     * @param typeName The type name
-     * @return The average latency in nanoseconds
-     */
-    private static long getAverageLatency(String typeName) {
-        AtomicInteger count = deserializationStats.get(typeName);
-        AtomicLong latency = deserializationLatencies.get(typeName);
-        
-        if (count != null && latency != null && count.get() > 0) {
-            return latency.get() / count.get();
-        }
-        return 0;
-    }
-    
-    /**
-     * Gets the overall average latency across all types.
-     * @return The overall average latency in nanoseconds
-     */
-    private static long getOverallAverageLatency() {
-        long totalLatency = deserializationLatencies.values().stream()
-            .mapToLong(AtomicLong::get)
-            .sum();
-            
-        int totalCount = totalDeserializationCount.get();
-        if (totalCount > 0) {
-            return totalLatency / totalCount;
-        }
-        return 0;
-    }
-    
-    @Override
-    protected RecordUnion deserialize(String json, String type) {
-        long startTime = System.nanoTime();
-        try {
-            RecordUnion record = super.deserialize(json, type);
-            recordDeserializationSuccess(type, startTime);
-            return record;
-        } catch (Exception e) {
-            recordDeserializationFailure(type);
-            LOGGER.log(Level.WARNING, "Failed to deserialize record of type " + type, e);
-            throw e;
-        }
-    }
-    
-    /**
-     * Clears the deserialization statistics.
-     */
-    public static void clearStats() {
-        deserializationStats.values().forEach(AtomicInteger::set);
-        deserializationLatencies.values().forEach(AtomicLong::set);
+    public void clearStatistics() {
         totalDeserializationCount.set(0);
         errorCount.set(0);
+        
+        TYPES.keySet().forEach(type -> {
+            deserializationStats.computeIfAbsent(type, k -> new AtomicInteger(0))
+                              .set(0);
+            deserializationLatencies.computeIfAbsent(type, k -> new AtomicLong(0))
+                                  .set(0);
+        });
     }
 }
