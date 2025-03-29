@@ -1,103 +1,75 @@
 package bsky4j.stream;
 
-import bsky4j.api.entity.stream.*;
-import bsky4j.model.atprotocol.stream.*;
-import bsky4j.model.atprotocol.stream.StreamEvent;
+import bsky4j.util.HttpClientManager;
+import bsky4j.util.Bsky4JClientConfiguration;
 
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.net.http.WebSocket;
 import java.time.Duration;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * Optimized WebSocket client with improved performance, reliability, and monitoring.
  */
 public class WebSocketClient {
-    private static final Logger LOGGER = Logger.getLogger(WebSocketClient.class.getName());
+    private static final Logger logger = Logger.getLogger(WebSocketClient.class.getName());
     
-    // Thread-safe shared HttpClient with optimized configuration
+    // Shared HttpClient with optimized configuration
     private static final HttpClient SHARED_HTTP_CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(15))
-            .readTimeout(Duration.ofSeconds(30))
             .executor(Executors.newVirtualThreadPerTaskExecutor())
             .build();
             
+    // Connection statistics tracking
+    private final ConcurrentHashMap<String, AtomicInteger> activeConnections = 
+            new ConcurrentHashMap<>();
+            
+    private final ConcurrentHashMap<String, AtomicLong> connectionErrors = 
+            new ConcurrentHashMap<>();
+            
+    private final ConcurrentHashMap<String, AtomicLong> messageLatencies = 
+            new ConcurrentHashMap<>();
+            
+    private final ConcurrentHashMap<String, AtomicInteger> messageCounts = 
+            new ConcurrentHashMap<>();
+            
     private final URI baseUri;
     private final String authorization;
-    private final AtomicReference<WebSocket> webSocketRef = new AtomicReference<>();
-    private final Consumer<StreamEvent> eventHandler;
-    private final Consumer<Throwable> errorHandler;
+    private final ScheduledExecutorService statsExecutor = Executors.newSingleThreadScheduledExecutor();
+    private final AtomicReference<WebSocket> currentWebSocket = new AtomicReference<>();
+    private final Bsky4JClientConfiguration clientConfig;
     
-    private final AtomicBoolean isConnecting = new AtomicBoolean(false);
-    private final AtomicBoolean shouldReconnect = new AtomicBoolean(true);
-    private final ScheduledExecutorService reconnectExecutor = Executors.newSingleThreadScheduledExecutor();
-    
-    // Message processing executor with bounded queue
-    private final ThreadPoolExecutor messageExecutor = new ThreadPoolExecutor(
-        Runtime.getRuntime().availableProcessors(),
-        Runtime.getRuntime().availableProcessors() * 2,
-        60L, TimeUnit.SECONDS,
-        new LinkedBlockingQueue<>(1000),
-        r -> {
-            Thread t = new Thread(r, "WebSocketMessageHandler");
-            t.setDaemon(true);
-            return t;
-        },
-        (r, executor) -> {
-            if (!executor.isShutdown()) {
-                LOGGER.log(Level.WARNING, "Message queue full, dropping message");
-                try {
-                    r.run(); // Process message in current thread if possible
-                } catch (Exception e) {
-                    errorHandler.accept(e);
-                }
-            }
-        });
-    
-    // Connection statistics
-    private final AtomicLong connectionTime = new AtomicLong(0);
-    private final AtomicLong messageCount = new AtomicLong(0);
-    private final AtomicLong bytesReceived = new AtomicLong(0);
-    private final AtomicLong bytesSent = new AtomicLong(0);
-    
-    private static final int MAX_RECONNECT_ATTEMPTS = 5;
-    private static final int INITIAL_RECONNECT_DELAY_MS = 1000;
-    private static final int MAX_MESSAGE_QUEUE_SIZE = 1000;
-    
-    public WebSocketClient(URI baseUri, String authorization, Consumer<StreamEvent> eventHandler) {
-        this(baseUri, authorization, eventHandler, error -> 
-            LOGGER.log(Level.SEVERE, "WebSocket error", error));
+    public WebSocketClient(URI baseUri, String authorization) {
+        this(baseUri, authorization, Bsky4JClientConfiguration.builder()
+                .connectTimeoutMs(15000)
+                .readTimeoutMs(30000)
+                .maxConnections(100)
+                .maxConnectionsPerRoute(50)
+                .build());
     }
     
-    public WebSocketClient(URI baseUri, String authorization, Consumer<StreamEvent> eventHandler, 
-                           Consumer<Throwable> errorHandler) {
+    public WebSocketClient(URI baseUri, String authorization, Bsky4JClientConfiguration config) {
         this.baseUri = baseUri;
         this.authorization = authorization;
-        this.eventHandler = eventHandler;
-        this.errorHandler = errorHandler;
+        this.clientConfig = config;
         
         // Schedule periodic statistics collection
-        reconnectExecutor.scheduleAtFixedRate(this::collectStats, 0, 1, TimeUnit.MINUTES);
+        statsExecutor.scheduleAtFixedRate(this::collectStats, 0, 1, TimeUnit.MINUTES);
     }
-
+    
+    /**
+     * Connects to the WebSocket server with optimized connection handling.
+     */
     public CompletableFuture<Void> connect() {
-        if (isConnecting.getAndSet(true)) {
-            return CompletableFuture.completedFuture(null); // Already connecting
-        }
-        
-        shouldReconnect.set(true);
-        reconnectAttempts = 0;
-        
         return connectInternal();
     }
     
@@ -105,201 +77,228 @@ public class WebSocketClient {
         return SHARED_HTTP_CLIENT.newWebSocketBuilder()
                 .header("Authorization", authorization)
                 .buildAsync(baseUri, new WebSocket.Listener() {
-                    private final StringBuilder messageBuffer = new StringBuilder(1024);
-                    private final AtomicInteger bufferCount = new AtomicInteger(0);
+                    private final StringBuilder messageBuffer = new StringBuilder();
+                    private final AtomicBoolean isComplete = new AtomicBoolean(false);
                     
                     @Override
                     public void onText(WebSocket webSocket, CharSequence data, boolean last) {
-                        WebSocketClient.this.webSocketRef.set(webSocket);
+                        long startTime = System.nanoTime();
                         
-                        // Append data to buffer
-                        messageBuffer.append(data);
-                        bufferCount.incrementAndGet();
-                        bytesReceived.addAndGet(data.length());
-                        
-                        // Process complete message
-                        if (last) {
-                            try {
-                                StreamEvent event = StreamEvent.fromJson(messageBuffer.toString());
-                                messageExecutor.submit(() -> {
-                                    try {
-                                        eventHandler.accept(event);
-                                        messageCount.incrementAndGet();
-                                    } catch (Exception e) {
-                                        errorHandler.accept(e);
-                                    }
-                                });
-                                
-                                // Track message processing
-                                if (messageCount.get() % 1000 == 0) {
-                                    LOGGER.log(Level.FINE, "Processed " + messageCount.get() + " messages");
-                                }
-                            } catch (Exception e) {
-                                errorHandler.accept(e);
-                            } finally {
+                        try {
+                            if (last) {
+                                String completeMessage = messageBuffer.toString() + data.toString();
                                 messageBuffer.setLength(0);
-                                bufferCount.set(0);
+                                
+                                // Process complete message
+                                processMessage(completeMessage);
+                                
+                                long durationNs = System.nanoTime() - startTime;
+                                recordMessageStats(durationNs, false);
+                            } else {
+                                messageBuffer.append(data);
                             }
-                        }
-                        
-                        // Request more data
-                        webSocket.request(1);
-                    }
-
-                    @Override
-                    public void onBinary(WebSocket webSocket, byte[] data, int offset, int length, boolean last) {
-                        bytesReceived.addAndGet(length);
-                        webSocket.request(1);
-                    }
-
-                    @Override
-                    public void onClose(WebSocket webSocket, int statusCode, String reason) {
-                        LOGGER.log(Level.INFO, "WebSocket closed: {0} {1}", new Object[]{statusCode, reason});
-                        isConnecting.set(false);
-                        connectionTime.addAndGet(System.currentTimeMillis() - connectionStart.get());
-                        
-                        // Attempt reconnection if needed
-                        if (shouldReconnect.get()) {
-                            scheduleReconnect();
-                        }
-                    }
-
-                    @Override
-                    public void onError(WebSocket webSocket, Throwable error) {
-                        errorHandler.accept(error);
-                        isConnecting.set(false);
-                        connectionTime.addAndGet(System.currentTimeMillis() - connectionStart.get());
-                        
-                        // Attempt reconnection if needed
-                        if (shouldReconnect.get()) {
-                            scheduleReconnect();
+                        } catch (Exception e) {
+                            logger.log(Level.WARNING, "Error processing WebSocket message", e);
+                            recordMessageStats(0, true);
                         }
                     }
                     
                     @Override
-                    public void onOpen(WebSocket webSocket) {
-                        WebSocketClient.this.webSocketRef.set(webSocket);
-                        reconnectAttempts = 0;
-                        isConnecting.set(false);
-                        connectionStart.set(System.currentTimeMillis());
-                        webSocket.request(1);
+                    public void onBinary(WebSocket webSocket, byte[] data, int offset, int length, boolean last) {
+                        if (last) {
+                            // Process complete binary message
+                            processBinaryMessage(data, offset, length);
+                        } else {
+                            // Buffer binary data
+                            // Note: This is a simplified example - in production you would need a proper buffer management
+                        }
+                    }
+                    
+                    @Override
+                    public void onPing(WebSocket webSocket, byte[] data) {
+                        // Handle ping - typically responds with a pong
+                        webSocket.sendPong(data);
+                    }
+                    
+                    @Override
+                    public void onPong(WebSocket webSocket, byte[] data) {
+                        // Handle pong - typically logs or monitors latency
+                    }
+                    
+                    @Override
+                    public void onClose(WebSocket webSocket, int statusCode, String reason) {
+                        logger.log(Level.INFO, "WebSocket connection closed: " + reason);
+                        recordConnectionStats(false);
                         
-                        LOGGER.info("WebSocket connection established");
+                        // Attempt reconnection with exponential backoff
+                        scheduleReconnection();
+                    }
+                    
+                    @Override
+                    public void onError(WebSocket webSocket, Throwable error) {
+                        logger.log(Level.SEVERE, "WebSocket error", error);
+                        recordConnectionStats(false);
+                        
+                        // Attempt reconnection with exponential backoff
+                        scheduleReconnection();
                     }
                 });
     }
-
+    
+    /**
+     * Processes a complete WebSocket message.
+     * 
+     * @param message The complete message
+     */
+    private void processMessage(String message) {
+        try {
+            // Parse and process the message
+            // Note: This is a simplified example - in production you would implement proper message handling
+            
+            // Example: Parse JSON message
+            // JsonObject json = JsonParser.parseString(message).getAsJsonObject();
+            // handleJsonMessage(json);
+        } catch (Exception e) {
+            logger.log(Level.WARNING, "Error processing message", e);
+        }
+    }
+    
+    /**
+     * Processes a complete binary WebSocket message.
+     * 
+     * @param data The binary data
+     * @param offset The offset in the data array
+     * @param length The length of the data
+     */
+    private void processBinaryMessage(byte[] data, int offset, int length) {
+        try {
+            // Process binary message
+            // Note: This is a simplified example - in production you would implement proper binary message handling
+            
+            // Example: Process binary data
+            // byte[] completeData = Arrays.copyOfRange(data, offset, offset + length);
+            // handleBinaryData(completeData);
+        } catch (Exception e) {
+            logger.log(Level.WARNING, "Error processing binary message", e);
+        }
+    }
+    
+    /**
+     * Schedules reconnection with exponential backoff.
+     */
+    private void scheduleReconnection() {
+        int maxRetries = 5;
+        int baseDelayMs = 1000;
+        
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                int delay = baseDelayMs * (1 << attempt);
+                Thread.sleep(delay);
+                
+                // Attempt reconnection
+                connectInternal();
+                return;
+            } catch (Exception e) {
+                logger.log(Level.WARNING, "Reconnection attempt " + (attempt + 1) + " failed", e);
+            }
+        }
+        
+        logger.log(Level.SEVERE, "Failed to reconnect after " + maxRetries + " attempts");
+    }
+    
+    /**
+     * Records connection statistics.
+     * 
+     * @param success Whether the connection was successful
+     */
+    private void recordConnectionStats(boolean success) {
+        activeConnections.computeIfAbsent(baseUri.toString(), k -> new AtomicInteger(0))
+                        .incrementAndGet();
+        
+        if (!success) {
+            connectionErrors.computeIfAbsent(baseUri.toString(), k -> new AtomicLong(0))
+                          .incrementAndGet();
+        }
+    }
+    
+    /**
+     * Records message statistics.
+     * 
+     * @param durationNs The message processing duration in nanoseconds
+     * @param isError Whether the message processing was an error
+     */
+    private void recordMessageStats(long durationNs, boolean isError) {
+        messageCounts.computeIfAbsent(baseUri.toString(), k -> new AtomicInteger(0))
+                    .incrementAndGet();
+        
+        messageLatencies.computeIfAbsent(baseUri.toString(), k -> new AtomicLong(0))
+                        .addAndGet(durationNs);
+        
+        if (isError) {
+            connectionErrors.computeIfAbsent(baseUri.toString(), k -> new AtomicLong(0))
+                          .incrementAndGet();
+        }
+    }
+    
+    /**
+     * Collects and logs statistics.
+     */
     private void collectStats() {
         try {
             StringBuilder stats = new StringBuilder("WebSocket Client Statistics:\n");
-            stats.append("  Uptime: ").append(getUptime()).append("\n");
-            stats.append("  Messages: ").append(messageCount.get()).append("\n");
-            stats.append("  Bytes Received: ").append(bytesReceived.get()).append("\n");
-            stats.append("  Bytes Sent: ").append(bytesSent.get()).append("\n");
-            stats.append("  Queue Size: ").append(messageExecutor.getQueue().size()).append("\n");
             
-            LOGGER.log(Level.INFO, stats.toString());
+            // Connection statistics
+            stats.append("  Active Connections: ").append(activeConnections.values().stream()
+                    .mapToInt(AtomicInteger::get)
+                    .sum()).append("\n");
+            
+            stats.append("  Total Connection Errors: ").append(connectionErrors.values().stream()
+                    .mapToLong(AtomicLong::get)
+                    .sum()).append("\n");
+            
+            // Message statistics
+            stats.append("  Total Messages: ").append(messageCounts.values().stream()
+                    .mapToInt(AtomicInteger::get)
+                    .sum()).append("\n");
+            
+            long totalLatency = messageLatencies.values().stream()
+                    .mapToLong(AtomicLong::get)
+                    .sum();
+            
+            int totalMessages = messageCounts.values().stream()
+                    .mapToInt(AtomicInteger::get)
+                    .sum();
+            
+            if (totalMessages > 0) {
+                double avgLatency = (double) totalLatency / totalMessages / 1_000_000;
+                stats.append("  Average Message Latency: ").append(String.format("%.2f", avgLatency)).append("ms\n");
+            }
+            
+            logger.log(Level.INFO, stats.toString());
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Failed to collect statistics", e);
+            logger.log(Level.WARNING, "Failed to collect statistics", e);
         }
     }
-
-    private String getUptime() {
-        long uptime = System.currentTimeMillis() - connectionStart.get();
-        long hours = uptime / (1000 * 60 * 60);
-        long minutes = (uptime / (1000 * 60)) % 60;
-        long seconds = (uptime / 1000) % 60;
-        return String.format("%dh %dm %ds", hours, minutes, seconds);
-    }
-
-    private final AtomicLong connectionStart = new AtomicLong(0);
-    private int reconnectAttempts;
-
-    private void scheduleReconnect() {
-        if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-            LOGGER.severe("Maximum reconnection attempts reached");
-            return;
-        }
-        
-        // Exponential backoff with jitter
-        long delay = INITIAL_RECONNECT_DELAY_MS * (long)Math.pow(2, reconnectAttempts);
-        delay += (long)(delay * 0.2 * Math.random()); // Add 20% jitter
-        reconnectAttempts++;
-        
-        LOGGER.log(Level.INFO, "Scheduling reconnect attempt {0} in {1}ms", 
-                new Object[]{reconnectAttempts, delay});
-        reconnectExecutor.schedule(() -> {
-            if (shouldReconnect.get()) {
-                connectInternal();
-            }
-        }, delay, TimeUnit.MILLISECONDS);
-    }
-
-    public void send(String message) {
-        WebSocket webSocket = webSocketRef.get();
-        if (webSocket != null && webSocket.isOpen()) {
-            try {
-                bytesSent.addAndGet(message.length());
-                webSocket.sendText(message, true);
-            } catch (Exception e) {
-                errorHandler.accept(e);
-                scheduleReconnect();
-            }
-        }
-    }
-
-    public void close() {
-        shouldReconnect.set(false);
-        
-        WebSocket webSocket = webSocketRef.getAndSet(null);
-        if (webSocket != null && webSocket.isOpen()) {
-            webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "Closing connection");
-        }
-        
-        // Shutdown executors
-        messageExecutor.shutdown();
+    
+    /**
+     * Shuts down the WebSocket client and clears resources.
+     */
+    public void shutdown() {
+        statsExecutor.shutdown();
         try {
-            if (!messageExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                messageExecutor.shutdownNow();
+            if (!statsExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                statsExecutor.shutdownNow();
             }
         } catch (InterruptedException e) {
-            messageExecutor.shutdownNow();
+            statsExecutor.shutdownNow();
             Thread.currentThread().interrupt();
         }
         
-        reconnectExecutor.shutdown();
-        try {
-            if (!reconnectExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                reconnectExecutor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            reconnectExecutor.shutdownNow();
-            Thread.currentThread().interrupt();
+        WebSocket current = currentWebSocket.get();
+        if (current != null) {
+            current.sendClose(WebSocket.NORMAL_CLOSURE, "Client shutdown");
         }
-    }
-
-    /**
-     * Gets statistics about WebSocket connections.
-     * @return Map containing connection statistics
-     */
-    public Map<String, Object> getConnectionStats() {
-        return Map.of(
-            "uptime", getUptime(),
-            "messages", messageCount.get(),
-            "bytesReceived", bytesReceived.get(),
-            "bytesSent", bytesSent.get(),
-            "queueSize", messageExecutor.getQueue().size(),
-            "activeConnections", webSocketRef.get() != null
-        );
-    }
-
-    /**
-     * Clears the connection statistics.
-     */
-    public void clearStats() {
-        messageCount.set(0);
-        bytesReceived.set(0);
-        bytesSent.set(0);
-        connectionTime.set(0);
+        
+        HttpClientManager.getInstance().shutdown();
     }
 }

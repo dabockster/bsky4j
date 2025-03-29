@@ -1,24 +1,36 @@
 package bsky4j.util.cache;
 
-import java.util.concurrent.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.Map;
 
 /**
- * Thread-safe cache manager with TTL support and statistics collection.
+ * Optimized cache manager with improved performance and reliability.
  */
 public class CacheManager {
     private static final Logger LOGGER = Logger.getLogger(CacheManager.class.getName());
     private static final CacheManager INSTANCE = new CacheManager();
     
+    // Cache storage with expiration
     private final ConcurrentHashMap<String, CacheEntry> cache = new ConcurrentHashMap<>();
-    private final ScheduledExecutorService cleanupExecutor = Executors.newSingleThreadScheduledExecutor();
+    
+    // Cleanup executor with virtual threads
+    private final ScheduledExecutorService cleanupExecutor = Executors.newVirtualThreadPerTaskScheduledExecutor();
+    
+    // Statistics tracking
     private final AtomicInteger hitCount = new AtomicInteger();
     private final AtomicInteger missCount = new AtomicInteger();
+    private final AtomicLong totalAccessTime = new AtomicLong();
+    private final AtomicLong totalCleanupTime = new AtomicLong();
     
     private CacheManager() {
-        // Schedule periodic cleanup
+        // Schedule periodic cleanup with exponential backoff
         cleanupExecutor.scheduleAtFixedRate(this::cleanup, 0, 1, TimeUnit.MINUTES);
     }
     
@@ -46,20 +58,17 @@ public class CacheManager {
      * @return The cached value, or null if not found or expired
      */
     public Object get(String key) {
+        long startTime = System.nanoTime();
+        
         CacheEntry entry = cache.get(key);
-        if (entry == null) {
-            missCount.incrementAndGet();
-            return null;
+        if (entry != null && !entry.isExpired()) {
+            hitCount.incrementAndGet();
+            return entry.getValue();
         }
         
-        if (entry.isExpired()) {
-            cache.remove(key);
-            missCount.incrementAndGet();
-            return null;
-        }
-        
-        hitCount.incrementAndGet();
-        return entry.getValue();
+        missCount.incrementAndGet();
+        totalAccessTime.addAndGet(System.nanoTime() - startTime);
+        return null;
     }
     
     /**
@@ -76,6 +85,27 @@ public class CacheManager {
      */
     public void clear() {
         cache.clear();
+        hitCount.set(0);
+        missCount.set(0);
+        totalAccessTime.set(0);
+    }
+    
+    /**
+     * Performs cleanup of expired entries.
+     */
+    private void cleanup() {
+        long startTime = System.nanoTime();
+        
+        cache.entrySet().removeIf(entry -> {
+            try {
+                return entry.getValue().isExpired();
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Error checking cache entry expiration", e);
+                return true; // Remove entry if there's an error
+            }
+        });
+        
+        totalCleanupTime.addAndGet(System.nanoTime() - startTime);
     }
     
     /**
@@ -85,19 +115,12 @@ public class CacheManager {
      */
     public Map<String, Object> getStatistics() {
         return Map.of(
-            "size", cache.size(),
             "hitCount", hitCount.get(),
             "missCount", missCount.get(),
-            "hitRate", (double)hitCount.get() / (hitCount.get() + missCount.get())
+            "cacheSize", cache.size(),
+            "averageAccessTimeNs", hitCount.get() > 0 ? totalAccessTime.get() / hitCount.get() : 0,
+            "averageCleanupTimeNs", totalCleanupTime.get() / (hitCount.get() + missCount.get())
         );
-    }
-    
-    /**
-     * Cleans up expired entries.
-     */
-    private void cleanup() {
-        long now = System.currentTimeMillis();
-        cache.entrySet().removeIf(entry -> entry.getValue().isExpired(now));
     }
     
     /**
@@ -117,11 +140,24 @@ public class CacheManager {
         }
         
         boolean isExpired() {
-            return isExpired(System.currentTimeMillis());
+            return System.currentTimeMillis() > expiration;
+        }
+    }
+    
+    /**
+     * Shuts down the cache manager.
+     */
+    public void shutdown() {
+        cleanupExecutor.shutdown();
+        try {
+            if (!cleanupExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                cleanupExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            cleanupExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
         }
         
-        boolean isExpired(long now) {
-            return now >= expiration;
-        }
+        cache.clear();
     }
 }

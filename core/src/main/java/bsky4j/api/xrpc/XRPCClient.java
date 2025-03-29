@@ -19,6 +19,9 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
+import bsky4j.util.HttpClientManager;
+import bsky4j.util.Bsky4JClientConfiguration;
+
 /**
  * Optimized XRPC client with improved performance, reliability, and monitoring.
  */
@@ -33,30 +36,43 @@ public class XRPCClient {
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
             
-    // Request statistics tracking with atomic operations
+    // Request statistics tracking
     private static final ConcurrentHashMap<String, AtomicInteger> requestCounts = 
             new ConcurrentHashMap<>();
+            
     private static final ConcurrentHashMap<String, AtomicLong> requestLatencies = 
             new ConcurrentHashMap<>();
-    
+            
+    private static final ConcurrentHashMap<String, AtomicInteger> requestErrors = 
+            new ConcurrentHashMap<>();
+            
     private final URI baseUri;
     private final String authorization;
     private final ScheduledExecutorService statsExecutor = Executors.newSingleThreadScheduledExecutor();
+    private final AtomicReference<HttpClient> currentClient = new AtomicReference<>();
+    private final Bsky4JClientConfiguration clientConfig;
     
-    /**
-     * Creates a new XRPC client with the specified base URI and authorization.
-     *
-     * @param baseUri The base URI for the XRPC service
-     * @param authorization The authorization token
-     */
     public XRPCClient(URI baseUri, String authorization) {
+        this(baseUri, authorization, Bsky4JClientConfiguration.builder()
+                .connectTimeoutMs(15000)
+                .readTimeoutMs(30000)
+                .maxConnections(100)
+                .maxConnectionsPerRoute(50)
+                .build());
+    }
+    
+    public XRPCClient(URI baseUri, String authorization, Bsky4JClientConfiguration config) {
         this.baseUri = baseUri;
         this.authorization = authorization;
+        this.clientConfig = config;
+        
+        // Initialize client
+        currentClient.set(HttpClientManager.getInstance().getClient(config));
         
         // Schedule periodic statistics collection
         statsExecutor.scheduleAtFixedRate(this::collectStats, 0, 1, TimeUnit.MINUTES);
     }
-
+    
     /**
      * Makes an XRPC call with retry logic and improved error handling.
      * 
