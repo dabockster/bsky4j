@@ -1,67 +1,70 @@
 package bsky4j.model.bsky.actor;
 
-import javax.annotation.Nullable;
+import bsky4j.model.atproto.label.LabelDefsLabel;
+import java.util.List;
 
 public class ActorDefsViewerState {
-
-    @Nullable
     private Boolean muted;
-    @Nullable
-    private Boolean blockedBy;
-    /** at-uri */
-    @Nullable
-    private String blocking;
-    /** at-uri */
-    @Nullable
-    private String following;
-    /** at-uri */
-    @Nullable
-    private String followedBy;
+    private Boolean blocked;
+    private Boolean following;
+    private Boolean followedBy;
+    private Boolean blocking;
+    private String indexedAt;
+    private List<LabelDefsLabel> labels;
 
-    // region
-    @Nullable
     public Boolean getMuted() {
         return muted;
     }
 
-    public void setMuted(@Nullable Boolean muted) {
+    public void setMuted(Boolean muted) {
         this.muted = muted;
     }
 
-    @Nullable
-    public Boolean getBlockedBy() {
-        return blockedBy;
+    public Boolean getBlocked() {
+        return blocked;
     }
 
-    public void setBlockedBy(@Nullable Boolean blockedBy) {
-        this.blockedBy = blockedBy;
+    public void setBlocked(Boolean blocked) {
+        this.blocked = blocked;
     }
 
-    @Nullable
-    public String getBlocking() {
-        return blocking;
-    }
-
-    public void setBlocking(@Nullable String blocking) {
-        this.blocking = blocking;
-    }
-
-    @Nullable
-    public String getFollowing() {
+    public Boolean getFollowing() {
         return following;
     }
 
-    public void setFollowing(@Nullable String following) {
+    public void setFollowing(Boolean following) {
         this.following = following;
     }
 
-    @Nullable
-    public String getFollowedBy() {
+    public Boolean getFollowedBy() {
         return followedBy;
     }
 
-    public void setFollowedBy(@Nullable String followedBy) {
+    public void setFollowedBy(Boolean followedBy) {
         this.followedBy = followedBy;
     }
-    // endregion
+
+    public Boolean getBlocking() {
+        return blocking;
+    }
+
+    public void setBlocking(Boolean blocking) {
+        this.blocking = blocking;
+    }
+
+    public String getIndexedAt() {
+        return indexedAt;
+    }
+
+    public void setIndexedAt(String indexedAt) {
+        this.indexedAt = indexedAt;
+    }
+
+    public List<LabelDefsLabel> getLabels() {
+        return labels;
+    }
+
+    public void setLabels(List<LabelDefsLabel> labels) {
+        this.labels = labels;
+    }
 }

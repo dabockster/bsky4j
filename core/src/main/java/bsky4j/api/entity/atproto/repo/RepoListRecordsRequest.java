@@ -1,7 +1,6 @@
 package bsky4j.api.entity.atproto.repo;
 
 import bsky4j.api.entity.share.MapRequest;
-
 import javax.annotation.Nullable;
 import java.util.HashMap;
 import java.util.Map;
@@ -19,47 +18,104 @@ public class RepoListRecordsRequest implements MapRequest {
     private String collection;
 
     /**
-     * The number of records to return.
+     * The minimum record RKey to include in the response.
+     */
+    @Nullable
+    private String minRkey;
+
+    /**
+     * The maximum record RKey to include in the response.
+     */
+    @Nullable
+    private String maxRkey;
+
+    /**
+     * The maximum number of records to return.
      */
     @Nullable
     private Integer limit;
 
     /**
-     * rkey cursor.
+     * The cursor for pagination.
      */
     @Nullable
     private String cursor;
 
-    /**
-     * (DEPRECATED)
-     * The lowest sort-ordered rkey to start from (exclusive)
-     */
-    @Nullable
-    private String rkeyStart;
+    public RepoListRecordsRequest(String repo, String collection) {
+        this.repo = repo;
+        this.collection = collection;
+    }
 
-    /**
-     * (DEPRECATED)
-     * The highest sort-ordered rkey to stop at (exclusive)
-     */
-    @Nullable
-    private String rkeyEnd;
+    public String getRepo() {
+        return repo;
+    }
 
-    /**
-     * Reverse the order of the returned records?
-     */
-    @Nullable
-    private Boolean reverse;
+    public void setRepo(String repo) {
+        this.repo = repo;
+    }
+
+    public String getCollection() {
+        return collection;
+    }
+
+    public void setCollection(String collection) {
+        this.collection = collection;
+    }
+
+    public String getMinRkey() {
+        return minRkey;
+    }
+
+    public void setMinRkey(@Nullable String minRkey) {
+        this.minRkey = minRkey;
+    }
+
+    public String getMaxRkey() {
+        return maxRkey;
+    }
+
+    public void setMaxRkey(@Nullable String maxRkey) {
+        this.maxRkey = maxRkey;
+    }
+
+    public Integer getLimit() {
+        return limit;
+    }
+
+    public void setLimit(@Nullable Integer limit) {
+        this.limit = limit;
+    }
+
+    public String getCursor() {
+        return cursor;
+    }
+
+    public void setCursor(@Nullable String cursor) {
+        this.cursor = cursor;
+    }
 
     @Override
     public Map<String, Object> toMap() {
-        HashMap<String, Object> map = new HashMap<>();
-        addParam(map, "repo", getRepo());
-        addParam(map, "collection", getCollection());
-        addParam(map, "limit", getLimit());
-        addParam(map, "cursor", getCursor());
-        addParam(map, "rkeyStart", getRkeyStart());
-        addParam(map, "rkeyEnd", getRkeyEnd());
-        addParam(map, "reverse", getReverse());
+        Map<String, Object> map = new HashMap<>();
+        map.put("repo", repo);
+        map.put("collection", collection);
+        
+        if (minRkey != null) {
+            map.put("minRkey", minRkey);
+        }
+        
+        if (maxRkey != null) {
+            map.put("maxRkey", maxRkey);
+        }
+        
+        if (limit != null) {
+            map.put("limit", limit);
+        }
+        
+        if (cursor != null) {
+            map.put("cursor", cursor);
+        }
+        
         return map;
     }
 
@@ -68,47 +124,17 @@ public class RepoListRecordsRequest implements MapRequest {
         return new RepoListRecordsRequestBuilder();
     }
 
-    public String getRepo() {
-        return repo;
-    }
-
-    public String getCollection() {
-        return collection;
-    }
-
-    @Nullable
-    public Integer getLimit() {
-        return limit;
-    }
-
-    @Nullable
-    public String getCursor() {
-        return cursor;
-    }
-
-    @Nullable
-    public String getRkeyStart() {
-        return rkeyStart;
-    }
-
-    @Nullable
-    public String getRkeyEnd() {
-        return rkeyEnd;
-    }
-
-    @Nullable
-    public Boolean getReverse() {
-        return reverse;
-    }
-
     public static final class RepoListRecordsRequestBuilder {
         private String repo;
         private String collection;
+        @Nullable
+        private String minRkey;
+        @Nullable
+        private String maxRkey;
+        @Nullable
         private Integer limit;
+        @Nullable
         private String cursor;
-        private String rkeyStart;
-        private String rkeyEnd;
-        private Boolean reverse;
 
         private RepoListRecordsRequestBuilder() {
         }
@@ -123,40 +149,32 @@ public class RepoListRecordsRequest implements MapRequest {
             return this;
         }
 
-        public RepoListRecordsRequestBuilder limit(Integer limit) {
+        public RepoListRecordsRequestBuilder minRkey(@Nullable String minRkey) {
+            this.minRkey = minRkey;
+            return this;
+        }
+
+        public RepoListRecordsRequestBuilder maxRkey(@Nullable String maxRkey) {
+            this.maxRkey = maxRkey;
+            return this;
+        }
+
+        public RepoListRecordsRequestBuilder limit(@Nullable Integer limit) {
             this.limit = limit;
             return this;
         }
 
-        public RepoListRecordsRequestBuilder cursor(String cursor) {
+        public RepoListRecordsRequestBuilder cursor(@Nullable String cursor) {
             this.cursor = cursor;
             return this;
         }
 
-        public RepoListRecordsRequestBuilder rkeyStart(String rkeyStart) {
-            this.rkeyStart = rkeyStart;
-            return this;
-        }
-
-        public RepoListRecordsRequestBuilder rkeyEnd(String rkeyEnd) {
-            this.rkeyEnd = rkeyEnd;
-            return this;
-        }
-
-        public RepoListRecordsRequestBuilder reverse(Boolean reverse) {
-            this.reverse = reverse;
-            return this;
-        }
-
         public RepoListRecordsRequest build() {
-            RepoListRecordsRequest repoListRecordsRequest = new RepoListRecordsRequest();
-            repoListRecordsRequest.reverse = this.reverse;
+            RepoListRecordsRequest repoListRecordsRequest = new RepoListRecordsRequest(repo, collection);
+            repoListRecordsRequest.minRkey = this.minRkey;
+            repoListRecordsRequest.maxRkey = this.maxRkey;
             repoListRecordsRequest.limit = this.limit;
             repoListRecordsRequest.cursor = this.cursor;
-            repoListRecordsRequest.repo = this.repo;
-            repoListRecordsRequest.rkeyStart = this.rkeyStart;
-            repoListRecordsRequest.rkeyEnd = this.rkeyEnd;
-            repoListRecordsRequest.collection = this.collection;
             return repoListRecordsRequest;
         }
     }

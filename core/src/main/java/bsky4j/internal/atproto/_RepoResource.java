@@ -15,8 +15,15 @@ import bsky4j.api.entity.atproto.repo.RepoUploadBlobRequest;
 import bsky4j.api.entity.atproto.repo.RepoUploadBlobResponse;
 import bsky4j.api.entity.share.Response;
 import bsky4j.util.Bsky4JClientConfiguration;
-import net.socialhub.http.HttpMediaType;
-import net.socialhub.http.HttpRequestBuilder;
+
+import java.io.File;
+import java.io.InputStream;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpRequest.BodyPublishers;
+import java.net.http.HttpResponse;
+import java.net.http.HttpResponse.BodyHandlers;
+import java.util.Map;
 
 import static bsky4j.internal.share._InternalUtility.proceed;
 import static bsky4j.internal.share._InternalUtility.xrpc;
@@ -41,13 +48,14 @@ public class _RepoResource implements RepoResource {
     ) {
         return proceed(RepoCreateRecordResponse.class, () -> {
 
-            return new HttpRequestBuilder()
-                    .target(xrpc(this.uri))
-                    .path(ATProtocolTypes.RepoCreateRecord)
+            HttpRequest.Builder builder = HttpRequest.newBuilder()
+                    .uri(xrpc(this.uri).resolve(ATProtocolTypes.RepoCreateRecord))
                     .header("Authorization", request.getBearerToken())
-                    .request(HttpMediaType.APPLICATION_JSON)
-                    .json(request.toJson())
-                    .post();
+                    .header("Content-Type", "application/json");
+
+            builder.POST(BodyPublishers.ofString(request.toJson()));
+
+            return HttpClient.newHttpClient().send(builder.build(), BodyHandlers.ofString());
         });
     }
 
@@ -57,13 +65,14 @@ public class _RepoResource implements RepoResource {
     ) {
         return proceed(() -> {
 
-            return new HttpRequestBuilder()
-                    .target(xrpc(this.uri))
-                    .path(ATProtocolTypes.RepoDeleteRecord)
+            HttpRequest.Builder builder = HttpRequest.newBuilder()
+                    .uri(xrpc(this.uri).resolve(ATProtocolTypes.RepoDeleteRecord))
                     .header("Authorization", request.getBearerToken())
-                    .request(HttpMediaType.APPLICATION_JSON)
-                    .json(request.toJson())
-                    .post();
+                    .header("Content-Type", "application/json");
+
+            builder.POST(BodyPublishers.ofString(request.toJson()));
+
+            return HttpClient.newHttpClient().send(builder.build(), BodyHandlers.ofString());
         });
     }
 
@@ -78,14 +87,12 @@ public class _RepoResource implements RepoResource {
     ) {
         return proceed(RepoGetRecordResponse.class, () -> {
 
-            HttpRequestBuilder builder =
-                    new HttpRequestBuilder()
-                            .target(xrpc(this.uri))
-                            .path(ATProtocolTypes.RepoGetRecord)
-                            .request(HttpMediaType.APPLICATION_JSON);
+            HttpRequest.Builder builder = HttpRequest.newBuilder()
+                    .uri(xrpc(this.uri).resolve(ATProtocolTypes.RepoGetRecord));
 
-            request.toMap().forEach(builder::param);
-            return builder.get();
+            request.toMap().forEach((key, value) -> builder.uri(builder.uri().resolve("?").resolve(key).resolve("=").resolve(value)));
+
+            return HttpClient.newHttpClient().send(builder.build(), BodyHandlers.ofString());
         });
     }
 
@@ -95,14 +102,12 @@ public class _RepoResource implements RepoResource {
     ) {
         return proceed(RepoListRecordsResponse.class, () -> {
 
-            HttpRequestBuilder builder =
-                    new HttpRequestBuilder()
-                            .target(xrpc(this.uri))
-                            .path(ATProtocolTypes.RepoListRecords)
-                            .request(HttpMediaType.APPLICATION_JSON);
+            HttpRequest.Builder builder = HttpRequest.newBuilder()
+                    .uri(xrpc(this.uri).resolve(ATProtocolTypes.RepoListRecords));
 
-            request.toMap().forEach(builder::param);
-            return builder.get();
+            request.toMap().forEach((key, value) -> builder.uri(builder.uri().resolve("?").resolve(key).resolve("=").resolve(value)));
+
+            return HttpClient.newHttpClient().send(builder.build(), BodyHandlers.ofString());
         });
     }
 
@@ -117,26 +122,24 @@ public class _RepoResource implements RepoResource {
     ) {
         return proceed(RepoUploadBlobResponse.class, () -> {
 
-            HttpRequestBuilder builder =
-                    new HttpRequestBuilder(new Bsky4JClientConfiguration())
-                            .target(xrpc(this.uri))
-                            .path(ATProtocolTypes.RepoUploadBlob);
+            HttpRequest.Builder builder = HttpRequest.newBuilder()
+                    .uri(xrpc(this.uri).resolve(ATProtocolTypes.RepoUploadBlob));
 
             // From file
             if (request instanceof RepoUploadBlobByFileRequest) {
                 RepoUploadBlobByFileRequest f = (RepoUploadBlobByFileRequest) request;
                 builder.header("Authorization", f.getBearerToken());
-                builder.file("file", f.getFile());
+                builder.POST(BodyPublishers.ofFile(new File(f.getFile()).toPath()));
             }
 
             // From InputStream
             if (request instanceof RepoUploadBlobByStreamRequest) {
                 RepoUploadBlobByStreamRequest s = (RepoUploadBlobByStreamRequest) request;
                 builder.header("Authorization", s.getBearerToken());
-                builder.file("file", s.getStream(), s.getName());
+                builder.POST(BodyPublishers.ofInputStream(() -> s.getStream()));
             }
 
-            return builder.request(HttpMediaType.APPLICATION_JSON).post();
+            return HttpClient.newHttpClient().send(builder.build(), BodyHandlers.ofString());
         });
     }
 }

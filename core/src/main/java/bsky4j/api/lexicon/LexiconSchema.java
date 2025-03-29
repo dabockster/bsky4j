@@ -1,9 +1,6 @@
 package bsky4j.api.lexicon;
 
 import bsky4j.api.entity.lexicon.*;
-import bsky4j.model.atproto.lexicon.*;
-import bsky4j.model.atprotocol.lexicon.*;
-
 import java.util.Map;
 
 public class LexiconSchema {

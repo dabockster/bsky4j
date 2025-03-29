@@ -2,6 +2,7 @@ package bsky4j.api.entity.atproto.repo;
 
 import bsky4j.api.entity.share.AuthRequest;
 
+import javax.annotation.Nullable;
 import java.io.InputStream;
 
 public class RepoUploadBlobByStreamRequest extends AuthRequest implements RepoUploadBlobRequest {
@@ -11,6 +12,7 @@ public class RepoUploadBlobByStreamRequest extends AuthRequest implements RepoUp
     }
 
     private InputStream stream;
+    @Nullable
     private String name;
 
     // region
@@ -28,6 +30,7 @@ public class RepoUploadBlobByStreamRequest extends AuthRequest implements RepoUp
 
     public static final class RepoUploadBlobByStreamRequestBuilder {
         private InputStream stream;
+        @Nullable
         private String name;
         private String accessJwt;
 
@@ -39,7 +42,7 @@ public class RepoUploadBlobByStreamRequest extends AuthRequest implements RepoUp
             return this;
         }
 
-        public RepoUploadBlobByStreamRequestBuilder name(String name) {
+        public RepoUploadBlobByStreamRequestBuilder name(@Nullable String name) {
             this.name = name;
             return this;
         }

@@ -2,14 +2,11 @@ package bsky4j.model.bsky.embed;
 
 import bsky4j.model.share.Blob;
 
-import javax.annotation.Nullable;
-
 public class EmbedExternalExternal {
 
     private String uri;
     private String title;
     private String description;
-    @Nullable
     private Blob thumb;
 
     // region
@@ -37,12 +34,11 @@ public class EmbedExternalExternal {
         this.description = description;
     }
 
-    @Nullable
     public Blob getThumb() {
         return thumb;
     }
 
-    public void setThumb(@Nullable Blob thumb) {
+    public void setThumb(Blob thumb) {
         this.thumb = thumb;
     }
     // endregion

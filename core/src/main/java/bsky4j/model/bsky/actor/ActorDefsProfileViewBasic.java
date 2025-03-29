@@ -1,8 +1,7 @@
 package bsky4j.model.bsky.actor;
 
 import bsky4j.model.atproto.label.LabelDefsLabel;
-
-import javax.annotation.Nullable;
+import bsky4j.model.share.Blob;
 import java.util.List;
 
 /**
@@ -12,13 +11,9 @@ public class ActorDefsProfileViewBasic {
 
     private String did;
     private String handle;
-    @Nullable
     private String displayName;
-    @Nullable
-    private String avatar;
-    @Nullable
+    private bsky4j.model.share.Blob avatar;
     private ActorDefsViewerState viewer;
-    @Nullable
     private List<LabelDefsLabel> labels;
 
     // region
@@ -38,39 +33,35 @@ public class ActorDefsProfileViewBasic {
         this.handle = handle;
     }
 
-    @Nullable
     public String getDisplayName() {
         return displayName;
     }
 
-    public void setDisplayName(@Nullable String displayName) {
+    public void setDisplayName(String displayName) {
         this.displayName = displayName;
     }
 
-    @Nullable
-    public String getAvatar() {
+    public bsky4j.model.share.Blob getAvatar() {
         return avatar;
     }
 
-    public void setAvatar(@Nullable String avatar) {
+    public void setAvatar(bsky4j.model.share.Blob avatar) {
         this.avatar = avatar;
     }
 
-    @Nullable
     public ActorDefsViewerState getViewer() {
         return viewer;
     }
 
-    public void setViewer(@Nullable ActorDefsViewerState viewer) {
+    public void setViewer(ActorDefsViewerState viewer) {
         this.viewer = viewer;
     }
 
-    @Nullable
     public List<LabelDefsLabel> getLabels() {
         return labels;
     }
 
-    public void setLabels(@Nullable List<LabelDefsLabel> labels) {
+    public void setLabels(List<LabelDefsLabel> labels) {
         this.labels = labels;
     }
     // endregion

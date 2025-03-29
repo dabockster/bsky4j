@@ -7,8 +7,10 @@ import bsky4j.api.entity.atproto.repo.RepoCreateRecordRequest;
 import bsky4j.api.entity.atproto.repo.RepoDeleteRecordRequest;
 import bsky4j.api.entity.bsky.feed.*;
 import bsky4j.api.entity.share.Response;
-import net.socialhub.http.HttpMediaType;
-import net.socialhub.http.HttpRequestBuilder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.util.Map;
 
 import static bsky4j.internal.share._InternalUtility.proceed;
 import static bsky4j.internal.share._InternalUtility.xrpc;
@@ -27,15 +29,16 @@ public class _FeedResource implements FeedResource {
     ) {
         return proceed(FeedGetAuthorFeedResponse.class, () -> {
 
-            HttpRequestBuilder builder =
-                    new HttpRequestBuilder()
-                            .target(xrpc(this.uri))
-                            .path(BlueskyTypes.FeedGetAuthorFeed)
-                            .header("Authorization", request.getBearerToken())
-                            .request(HttpMediaType.APPLICATION_JSON);
+            HttpRequest.Builder builder =
+                    HttpRequest.newBuilder()
+                            .uri(xrpc(this.uri) + "/" + BlueskyTypes.FeedGetAuthorFeed)
+                            .header("Authorization", request.getBearerToken());
 
-            request.toMap().forEach(builder::param);
-            return builder.get();
+            request.toMap().forEach((key, value) -> builder.header(key, value));
+
+            return HttpClient.newHttpClient().sendAsync(builder.build(), HttpResponse.BodyHandlers.ofString())
+                    .thenApply(HttpResponse::body)
+                    .join();
         });
     }
 
@@ -45,15 +48,16 @@ public class _FeedResource implements FeedResource {
     ) {
         return proceed(FeedGetLikesResponse.class, () -> {
 
-            HttpRequestBuilder builder =
-                    new HttpRequestBuilder()
-                            .target(xrpc(this.uri))
-                            .path(BlueskyTypes.FeedGetLikes)
-                            .header("Authorization", request.getBearerToken())
-                            .request(HttpMediaType.APPLICATION_JSON);
+            HttpRequest.Builder builder =
+                    HttpRequest.newBuilder()
+                            .uri(xrpc(this.uri) + "/" + BlueskyTypes.FeedGetLikes)
+                            .header("Authorization", request.getBearerToken());
 
-            request.toMap().forEach(builder::param);
-            return builder.get();
+            request.toMap().forEach((key, value) -> builder.header(key, value));
+
+            return HttpClient.newHttpClient().sendAsync(builder.build(), HttpResponse.BodyHandlers.ofString())
+                    .thenApply(HttpResponse::body)
+                    .join();
         });
     }
 
@@ -63,15 +67,16 @@ public class _FeedResource implements FeedResource {
     ) {
         return proceed(FeedGetPostThreadResponse.class, () -> {
 
-            HttpRequestBuilder builder =
-                    new HttpRequestBuilder()
-                            .target(xrpc(this.uri))
-                            .path(BlueskyTypes.FeedGetPostThread)
-                            .header("Authorization", request.getBearerToken())
-                            .request(HttpMediaType.APPLICATION_JSON);
+            HttpRequest.Builder builder =
+                    HttpRequest.newBuilder()
+                            .uri(xrpc(this.uri) + "/" + BlueskyTypes.FeedGetPostThread)
+                            .header("Authorization", request.getBearerToken());
 
-            request.toMap().forEach(builder::param);
-            return builder.get();
+            request.toMap().forEach((key, value) -> builder.header(key, value));
+
+            return HttpClient.newHttpClient().sendAsync(builder.build(), HttpResponse.BodyHandlers.ofString())
+                    .thenApply(HttpResponse::body)
+                    .join();
         });
     }
 
@@ -81,16 +86,16 @@ public class _FeedResource implements FeedResource {
     ) {
         return proceed(FeedGetPostsResponse.class, () -> {
 
-            HttpRequestBuilder builder =
-                    new HttpRequestBuilder()
-                            .target(xrpc(this.uri))
-                            .path(BlueskyTypes.FeedGetPosts)
-                            .header("Authorization", request.getBearerToken())
-                            .request(HttpMediaType.APPLICATION_JSON);
+            HttpRequest.Builder builder =
+                    HttpRequest.newBuilder()
+                            .uri(xrpc(this.uri) + "/" + BlueskyTypes.FeedGetPosts)
+                            .header("Authorization", request.getBearerToken());
 
-            request.getUris().forEach(u ->
-                    builder.param("uris", u));
-            return builder.get();
+            request.getUris().forEach(u -> builder.header("uris", u));
+
+            return HttpClient.newHttpClient().sendAsync(builder.build(), HttpResponse.BodyHandlers.ofString())
+                    .thenApply(HttpResponse::body)
+                    .join();
         });
     }
 
@@ -100,15 +105,16 @@ public class _FeedResource implements FeedResource {
     ) {
         return proceed(FeedSearchPostsResponse.class, () -> {
 
-            HttpRequestBuilder builder =
-                    new HttpRequestBuilder()
-                            .target(xrpc(this.uri))
-                            .path(BlueskyTypes.FeedGetFeedSearchPosts)
-                            .header("Authorization", request.getBearerToken())
-                            .request(HttpMediaType.APPLICATION_JSON);
+            HttpRequest.Builder builder =
+                    HttpRequest.newBuilder()
+                            .uri(xrpc(this.uri) + "/" + BlueskyTypes.FeedGetFeedSearchPosts)
+                            .header("Authorization", request.getBearerToken());
 
-            request.toMap().forEach(builder::param);
-            return builder.get();
+            request.toMap().forEach((key, value) -> builder.header(key, value));
+
+            return HttpClient.newHttpClient().sendAsync(builder.build(), HttpResponse.BodyHandlers.ofString())
+                    .thenApply(HttpResponse::body)
+                    .join();
         });
     }
 
@@ -118,15 +124,16 @@ public class _FeedResource implements FeedResource {
     ) {
         return proceed(FeedGetRepostedByResponse.class, () -> {
 
-            HttpRequestBuilder builder =
-                    new HttpRequestBuilder()
-                            .target(xrpc(this.uri))
-                            .path(BlueskyTypes.FeedGetRepostedBy)
-                            .header("Authorization", request.getBearerToken())
-                            .request(HttpMediaType.APPLICATION_JSON);
+            HttpRequest.Builder builder =
+                    HttpRequest.newBuilder()
+                            .uri(xrpc(this.uri) + "/" + BlueskyTypes.FeedGetRepostedBy)
+                            .header("Authorization", request.getBearerToken());
 
-            request.toMap().forEach(builder::param);
-            return builder.get();
+            request.toMap().forEach((key, value) -> builder.header(key, value));
+
+            return HttpClient.newHttpClient().sendAsync(builder.build(), HttpResponse.BodyHandlers.ofString())
+                    .thenApply(HttpResponse::body)
+                    .join();
         });
     }
 
@@ -136,15 +143,16 @@ public class _FeedResource implements FeedResource {
     ) {
         return proceed(FeedGetTimelineResponse.class, () -> {
 
-            HttpRequestBuilder builder =
-                    new HttpRequestBuilder()
-                            .target(xrpc(this.uri))
-                            .path(BlueskyTypes.FeedGetTimeline)
-                            .header("Authorization", request.getBearerToken())
-                            .request(HttpMediaType.APPLICATION_JSON);
+            HttpRequest.Builder builder =
+                    HttpRequest.newBuilder()
+                            .uri(xrpc(this.uri) + "/" + BlueskyTypes.FeedGetTimeline)
+                            .header("Authorization", request.getBearerToken());
 
-            request.toMap().forEach(builder::param);
-            return builder.get();
+            request.toMap().forEach((key, value) -> builder.header(key, value));
+
+            return HttpClient.newHttpClient().sendAsync(builder.build(), HttpResponse.BodyHandlers.ofString())
+                    .thenApply(HttpResponse::body)
+                    .join();
         });
     }
 
@@ -154,15 +162,16 @@ public class _FeedResource implements FeedResource {
     ) {
         return proceed(FeedGetFeedResponse.class, () -> {
 
-            HttpRequestBuilder builder =
-                    new HttpRequestBuilder()
-                            .target(xrpc(this.uri))
-                            .path(BlueskyTypes.FeedGetFeed)
-                            .header("Authorization", request.getBearerToken())
-                            .request(HttpMediaType.APPLICATION_JSON);
+            HttpRequest.Builder builder =
+                    HttpRequest.newBuilder()
+                            .uri(xrpc(this.uri) + "/" + BlueskyTypes.FeedGetFeed)
+                            .header("Authorization", request.getBearerToken());
 
-            request.toMap().forEach(builder::param);
-            return builder.get();
+            request.toMap().forEach((key, value) -> builder.header(key, value));
+
+            return HttpClient.newHttpClient().sendAsync(builder.build(), HttpResponse.BodyHandlers.ofString())
+                    .thenApply(HttpResponse::body)
+                    .join();
         });
     }
 
@@ -172,15 +181,16 @@ public class _FeedResource implements FeedResource {
     ) {
         return proceed(FeedGetActorFeedsResponse.class, () -> {
 
-            HttpRequestBuilder builder =
-                    new HttpRequestBuilder()
-                            .target(xrpc(this.uri))
-                            .path(BlueskyTypes.FeedGetActorFeeds)
-                            .header("Authorization", request.getBearerToken())
-                            .request(HttpMediaType.APPLICATION_JSON);
+            HttpRequest.Builder builder =
+                    HttpRequest.newBuilder()
+                            .uri(xrpc(this.uri) + "/" + BlueskyTypes.FeedGetActorFeeds)
+                            .header("Authorization", request.getBearerToken());
 
-            request.toMap().forEach(builder::param);
-            return builder.get();
+            request.toMap().forEach((key, value) -> builder.header(key, value));
+
+            return HttpClient.newHttpClient().sendAsync(builder.build(), HttpResponse.BodyHandlers.ofString())
+                    .thenApply(HttpResponse::body)
+                    .join();
         });
     }
 
@@ -190,15 +200,16 @@ public class _FeedResource implements FeedResource {
     ) {
         return proceed(FeedGetActorLikesResponse.class, () -> {
 
-            HttpRequestBuilder builder =
-                    new HttpRequestBuilder()
-                            .target(xrpc(this.uri))
-                            .path(BlueskyTypes.FeedGetActorLikes)
-                            .header("Authorization", request.getBearerToken())
-                            .request(HttpMediaType.APPLICATION_JSON);
+            HttpRequest.Builder builder =
+                    HttpRequest.newBuilder()
+                            .uri(xrpc(this.uri) + "/" + BlueskyTypes.FeedGetActorLikes)
+                            .header("Authorization", request.getBearerToken());
 
-            request.toMap().forEach(builder::param);
-            return builder.get();
+            request.toMap().forEach((key, value) -> builder.header(key, value));
+
+            return HttpClient.newHttpClient().sendAsync(builder.build(), HttpResponse.BodyHandlers.ofString())
+                    .thenApply(HttpResponse::body)
+                    .join();
         });
     }
 
@@ -208,15 +219,16 @@ public class _FeedResource implements FeedResource {
     ) {
         return proceed(FeedGetFeedGeneratorResponse.class, () -> {
 
-            HttpRequestBuilder builder =
-                    new HttpRequestBuilder()
-                            .target(xrpc(this.uri))
-                            .path(BlueskyTypes.FeedGetFeedGenerator)
-                            .header("Authorization", request.getBearerToken())
-                            .request(HttpMediaType.APPLICATION_JSON);
+            HttpRequest.Builder builder =
+                    HttpRequest.newBuilder()
+                            .uri(xrpc(this.uri) + "/" + BlueskyTypes.FeedGetFeedGenerator)
+                            .header("Authorization", request.getBearerToken());
 
-            request.toMap().forEach(builder::param);
-            return builder.get();
+            request.toMap().forEach((key, value) -> builder.header(key, value));
+
+            return HttpClient.newHttpClient().sendAsync(builder.build(), HttpResponse.BodyHandlers.ofString())
+                    .thenApply(HttpResponse::body)
+                    .join();
         });
     }
 
@@ -226,16 +238,16 @@ public class _FeedResource implements FeedResource {
     ) {
         return proceed(FeedGetFeedGeneratorsResponse.class, () -> {
 
-            HttpRequestBuilder builder =
-                    new HttpRequestBuilder()
-                            .target(xrpc(this.uri))
-                            .path(BlueskyTypes.FeedGetFeedGenerators)
-                            .header("Authorization", request.getBearerToken())
-                            .request(HttpMediaType.APPLICATION_JSON);
+            HttpRequest.Builder builder =
+                    HttpRequest.newBuilder()
+                            .uri(xrpc(this.uri) + "/" + BlueskyTypes.FeedGetFeedGenerators)
+                            .header("Authorization", request.getBearerToken());
 
-            request.getFeeds().forEach(u ->
-                    builder.param("feeds", u));
-            return builder.get();
+            request.getFeeds().forEach(u -> builder.header("feeds", u));
+
+            return HttpClient.newHttpClient().sendAsync(builder.build(), HttpResponse.BodyHandlers.ofString())
+                    .thenApply(HttpResponse::body)
+                    .join();
         });
     }
 
@@ -253,13 +265,15 @@ public class _FeedResource implements FeedResource {
                             .record(request.toLike())
                             .build();
 
-            return new HttpRequestBuilder()
-                    .target(xrpc(this.uri))
-                    .path(ATProtocolTypes.RepoCreateRecord)
-                    .header("Authorization", request.getBearerToken())
-                    .request(HttpMediaType.APPLICATION_JSON)
-                    .json(record.toJson())
-                    .post();
+            HttpRequest.Builder builder =
+                    HttpRequest.newBuilder()
+                            .uri(xrpc(this.uri) + "/" + ATProtocolTypes.RepoCreateRecord)
+                            .header("Authorization", request.getBearerToken())
+                            .header("Content-Type", "application/json");
+
+            return HttpClient.newHttpClient().sendAsync(builder.POST(HttpRequest.BodyPublishers.ofString(record.toJson())), HttpResponse.BodyHandlers.ofString())
+                    .thenApply(HttpResponse::body)
+                    .join();
         });
     }
 
@@ -277,13 +291,15 @@ public class _FeedResource implements FeedResource {
                             .rkey(request.getRkey())
                             .build();
 
-            return new HttpRequestBuilder()
-                    .target(xrpc(this.uri))
-                    .path(ATProtocolTypes.RepoDeleteRecord)
-                    .header("Authorization", request.getBearerToken())
-                    .request(HttpMediaType.APPLICATION_JSON)
-                    .json(record.toJson())
-                    .post();
+            HttpRequest.Builder builder =
+                    HttpRequest.newBuilder()
+                            .uri(xrpc(this.uri) + "/" + ATProtocolTypes.RepoDeleteRecord)
+                            .header("Authorization", request.getBearerToken())
+                            .header("Content-Type", "application/json");
+
+            return HttpClient.newHttpClient().sendAsync(builder.POST(HttpRequest.BodyPublishers.ofString(record.toJson())), HttpResponse.BodyHandlers.ofString())
+                    .thenApply(HttpResponse::body)
+                    .join();
         });
     }
 
@@ -301,13 +317,15 @@ public class _FeedResource implements FeedResource {
                             .record(request.toPost())
                             .build();
 
-            return new HttpRequestBuilder()
-                    .target(xrpc(this.uri))
-                    .path(ATProtocolTypes.RepoCreateRecord)
-                    .header("Authorization", request.getBearerToken())
-                    .request(HttpMediaType.APPLICATION_JSON)
-                    .json(record.toJson())
-                    .post();
+            HttpRequest.Builder builder =
+                    HttpRequest.newBuilder()
+                            .uri(xrpc(this.uri) + "/" + ATProtocolTypes.RepoCreateRecord)
+                            .header("Authorization", request.getBearerToken())
+                            .header("Content-Type", "application/json");
+
+            return HttpClient.newHttpClient().sendAsync(builder.POST(HttpRequest.BodyPublishers.ofString(record.toJson())), HttpResponse.BodyHandlers.ofString())
+                    .thenApply(HttpResponse::body)
+                    .join();
         });
     }
 
@@ -325,13 +343,15 @@ public class _FeedResource implements FeedResource {
                             .rkey(request.getRkey())
                             .build();
 
-            return new HttpRequestBuilder()
-                    .target(xrpc(this.uri))
-                    .path(ATProtocolTypes.RepoDeleteRecord)
-                    .header("Authorization", request.getBearerToken())
-                    .request(HttpMediaType.APPLICATION_JSON)
-                    .json(record.toJson())
-                    .post();
+            HttpRequest.Builder builder =
+                    HttpRequest.newBuilder()
+                            .uri(xrpc(this.uri) + "/" + ATProtocolTypes.RepoDeleteRecord)
+                            .header("Authorization", request.getBearerToken())
+                            .header("Content-Type", "application/json");
+
+            return HttpClient.newHttpClient().sendAsync(builder.POST(HttpRequest.BodyPublishers.ofString(record.toJson())), HttpResponse.BodyHandlers.ofString())
+                    .thenApply(HttpResponse::body)
+                    .join();
         });
     }
 
@@ -349,13 +369,15 @@ public class _FeedResource implements FeedResource {
                             .record(request.toRepost())
                             .build();
 
-            return new HttpRequestBuilder()
-                    .target(xrpc(this.uri))
-                    .path(ATProtocolTypes.RepoCreateRecord)
-                    .header("Authorization", request.getBearerToken())
-                    .request(HttpMediaType.APPLICATION_JSON)
-                    .json(record.toJson())
-                    .post();
+            HttpRequest.Builder builder =
+                    HttpRequest.newBuilder()
+                            .uri(xrpc(this.uri) + "/" + ATProtocolTypes.RepoCreateRecord)
+                            .header("Authorization", request.getBearerToken())
+                            .header("Content-Type", "application/json");
+
+            return HttpClient.newHttpClient().sendAsync(builder.POST(HttpRequest.BodyPublishers.ofString(record.toJson())), HttpResponse.BodyHandlers.ofString())
+                    .thenApply(HttpResponse::body)
+                    .join();
         });
     }
 
@@ -373,13 +395,15 @@ public class _FeedResource implements FeedResource {
                             .rkey(request.getRkey())
                             .build();
 
-            return new HttpRequestBuilder()
-                    .target(xrpc(this.uri))
-                    .path(ATProtocolTypes.RepoDeleteRecord)
-                    .header("Authorization", request.getBearerToken())
-                    .request(HttpMediaType.APPLICATION_JSON)
-                    .json(record.toJson())
-                    .post();
+            HttpRequest.Builder builder =
+                    HttpRequest.newBuilder()
+                            .uri(xrpc(this.uri) + "/" + ATProtocolTypes.RepoDeleteRecord)
+                            .header("Authorization", request.getBearerToken())
+                            .header("Content-Type", "application/json");
+
+            return HttpClient.newHttpClient().sendAsync(builder.POST(HttpRequest.BodyPublishers.ofString(record.toJson())), HttpResponse.BodyHandlers.ofString())
+                    .thenApply(HttpResponse::body)
+                    .join();
         });
     }
 }

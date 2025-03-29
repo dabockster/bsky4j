@@ -22,8 +22,12 @@ import bsky4j.api.entity.bsky.graph.GraphGetMutesResponse;
 import bsky4j.api.entity.bsky.graph.GraphMuteActorRequest;
 import bsky4j.api.entity.bsky.graph.GraphUnmuteActorRequest;
 import bsky4j.api.entity.share.Response;
-import net.socialhub.http.HttpMediaType;
-import net.socialhub.http.HttpRequestBuilder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpRequest.BodyPublishers;
+import java.net.http.HttpResponse;
+import java.net.http.HttpResponse.BodyHandlers;
+import java.util.concurrent.CompletableFuture;
 
 import static bsky4j.internal.share._InternalUtility.proceed;
 import static bsky4j.internal.share._InternalUtility.xrpc;
@@ -50,13 +54,16 @@ public class _GraphResource implements GraphResource {
                             .record(request.toFollow())
                             .build();
 
-            return new HttpRequestBuilder()
-                    .target(xrpc(this.uri))
-                    .path(ATProtocolTypes.RepoCreateRecord)
+            HttpRequest httpRequest = HttpRequest.newBuilder()
+                    .uri(xrpc(this.uri) + ATProtocolTypes.RepoCreateRecord)
                     .header("Authorization", request.getBearerToken())
-                    .request(HttpMediaType.APPLICATION_JSON)
-                    .json(record.toJson())
-                    .post();
+                    .header("Content-Type", "application/json")
+                    .POST(BodyPublishers.ofString(record.toJson()))
+                    .build();
+
+            return HttpClient.newHttpClient().sendAsync(httpRequest, BodyHandlers.ofString())
+                    .thenApply(HttpResponse::body)
+                    .thenApply(Response::fromJson);
         });
     }
 
@@ -74,13 +81,16 @@ public class _GraphResource implements GraphResource {
                             .rkey(request.getRkey())
                             .build();
 
-            return new HttpRequestBuilder()
-                    .target(xrpc(this.uri))
-                    .path(ATProtocolTypes.RepoDeleteRecord)
+            HttpRequest httpRequest = HttpRequest.newBuilder()
+                    .uri(xrpc(this.uri) + ATProtocolTypes.RepoDeleteRecord)
                     .header("Authorization", request.getBearerToken())
-                    .request(HttpMediaType.APPLICATION_JSON)
-                    .json(record.toJson())
-                    .post();
+                    .header("Content-Type", "application/json")
+                    .POST(BodyPublishers.ofString(record.toJson()))
+                    .build();
+
+            return HttpClient.newHttpClient().sendAsync(httpRequest, BodyHandlers.ofString())
+                    .thenApply(HttpResponse::statusCode)
+                    .thenApply(code -> code == 200 ? CompletableFuture.completedFuture(null) : CompletableFuture.failedFuture(new RuntimeException("Failed to delete follow")));
         });
     }
 
@@ -89,15 +99,17 @@ public class _GraphResource implements GraphResource {
             GraphGetFollowersRequest request
     ) {
         return proceed(GraphGetFollowersResponse.class, () -> {
-            HttpRequestBuilder builder =
-                    new HttpRequestBuilder()
-                            .target(xrpc(this.uri))
-                            .path(BlueskyTypes.GraphGetFollowers)
-                            .header("Authorization", request.getBearerToken())
-                            .request(HttpMediaType.APPLICATION_JSON);
+            HttpRequest httpRequest = HttpRequest.newBuilder()
+                    .uri(xrpc(this.uri) + BlueskyTypes.GraphGetFollowers)
+                    .header("Authorization", request.getBearerToken())
+                    .GET()
+                    .build();
 
-            request.toMap().forEach(builder::param);
-            return builder.get();
+            request.toMap().forEach((key, value) -> httpRequest = httpRequest.uri(xrpc(this.uri) + BlueskyTypes.GraphGetFollowers + "?" + key + "=" + value));
+
+            return HttpClient.newHttpClient().sendAsync(httpRequest, BodyHandlers.ofString())
+                    .thenApply(HttpResponse::body)
+                    .thenApply(Response::fromJson);
         });
     }
 
@@ -106,15 +118,17 @@ public class _GraphResource implements GraphResource {
             GraphGetFollowsRequest request
     ) {
         return proceed(GraphGetFollowsResponse.class, () -> {
-            HttpRequestBuilder builder =
-                    new HttpRequestBuilder()
-                            .target(xrpc(this.uri))
-                            .path(BlueskyTypes.GraphGetFollows)
-                            .header("Authorization", request.getBearerToken())
-                            .request(HttpMediaType.APPLICATION_JSON);
+            HttpRequest httpRequest = HttpRequest.newBuilder()
+                    .uri(xrpc(this.uri) + BlueskyTypes.GraphGetFollows)
+                    .header("Authorization", request.getBearerToken())
+                    .GET()
+                    .build();
 
-            request.toMap().forEach(builder::param);
-            return builder.get();
+            request.toMap().forEach((key, value) -> httpRequest = httpRequest.uri(xrpc(this.uri) + BlueskyTypes.GraphGetFollows + "?" + key + "=" + value));
+
+            return HttpClient.newHttpClient().sendAsync(httpRequest, BodyHandlers.ofString())
+                    .thenApply(HttpResponse::body)
+                    .thenApply(Response::fromJson);
         });
     }
 
@@ -123,15 +137,17 @@ public class _GraphResource implements GraphResource {
             GraphGetMutesRequest request
     ) {
         return proceed(GraphGetMutesResponse.class, () -> {
-            HttpRequestBuilder builder =
-                    new HttpRequestBuilder()
-                            .target(xrpc(this.uri))
-                            .path(BlueskyTypes.GraphGetMutes)
-                            .header("Authorization", request.getBearerToken())
-                            .request(HttpMediaType.APPLICATION_JSON);
+            HttpRequest httpRequest = HttpRequest.newBuilder()
+                    .uri(xrpc(this.uri) + BlueskyTypes.GraphGetMutes)
+                    .header("Authorization", request.getBearerToken())
+                    .GET()
+                    .build();
 
-            request.toMap().forEach(builder::param);
-            return builder.get();
+            request.toMap().forEach((key, value) -> httpRequest = httpRequest.uri(xrpc(this.uri) + BlueskyTypes.GraphGetMutes + "?" + key + "=" + value));
+
+            return HttpClient.newHttpClient().sendAsync(httpRequest, BodyHandlers.ofString())
+                    .thenApply(HttpResponse::body)
+                    .thenApply(Response::fromJson);
         });
     }
 
@@ -140,13 +156,16 @@ public class _GraphResource implements GraphResource {
             GraphMuteActorRequest request
     ) {
         return proceed(() -> {
-            return new HttpRequestBuilder()
-                    .target(xrpc(this.uri))
-                    .path(BlueskyTypes.GraphMuteActor)
+            HttpRequest httpRequest = HttpRequest.newBuilder()
+                    .uri(xrpc(this.uri) + BlueskyTypes.GraphMuteActor)
                     .header("Authorization", request.getBearerToken())
-                    .request(HttpMediaType.APPLICATION_JSON)
-                    .json(request.toJson())
-                    .post();
+                    .header("Content-Type", "application/json")
+                    .POST(BodyPublishers.ofString(request.toJson()))
+                    .build();
+
+            return HttpClient.newHttpClient().sendAsync(httpRequest, BodyHandlers.ofString())
+                    .thenApply(HttpResponse::statusCode)
+                    .thenApply(code -> code == 200 ? CompletableFuture.completedFuture(null) : CompletableFuture.failedFuture(new RuntimeException("Failed to mute actor")));
         });
     }
 
@@ -155,13 +174,16 @@ public class _GraphResource implements GraphResource {
             GraphUnmuteActorRequest request
     ) {
         return proceed(() -> {
-            return new HttpRequestBuilder()
-                    .target(xrpc(this.uri))
-                    .path(BlueskyTypes.GraphUnmuteActor)
+            HttpRequest httpRequest = HttpRequest.newBuilder()
+                    .uri(xrpc(this.uri) + BlueskyTypes.GraphUnmuteActor)
                     .header("Authorization", request.getBearerToken())
-                    .request(HttpMediaType.APPLICATION_JSON)
-                    .json(request.toJson())
-                    .post();
+                    .header("Content-Type", "application/json")
+                    .POST(BodyPublishers.ofString(request.toJson()))
+                    .build();
+
+            return HttpClient.newHttpClient().sendAsync(httpRequest, BodyHandlers.ofString())
+                    .thenApply(HttpResponse::statusCode)
+                    .thenApply(code -> code == 200 ? CompletableFuture.completedFuture(null) : CompletableFuture.failedFuture(new RuntimeException("Failed to unmute actor")));
         });
     }
 
@@ -179,13 +201,16 @@ public class _GraphResource implements GraphResource {
                             .record(request.toBlock())
                             .build();
 
-            return new HttpRequestBuilder()
-                    .target(xrpc(this.uri))
-                    .path(ATProtocolTypes.RepoCreateRecord)
+            HttpRequest httpRequest = HttpRequest.newBuilder()
+                    .uri(xrpc(this.uri) + ATProtocolTypes.RepoCreateRecord)
                     .header("Authorization", request.getBearerToken())
-                    .request(HttpMediaType.APPLICATION_JSON)
-                    .json(record.toJson())
-                    .post();
+                    .header("Content-Type", "application/json")
+                    .POST(BodyPublishers.ofString(record.toJson()))
+                    .build();
+
+            return HttpClient.newHttpClient().sendAsync(httpRequest, BodyHandlers.ofString())
+                    .thenApply(HttpResponse::body)
+                    .thenApply(Response::fromJson);
         });
     }
 
@@ -203,13 +228,16 @@ public class _GraphResource implements GraphResource {
                             .rkey(request.getRkey())
                             .build();
 
-            return new HttpRequestBuilder()
-                    .target(xrpc(this.uri))
-                    .path(ATProtocolTypes.RepoDeleteRecord)
+            HttpRequest httpRequest = HttpRequest.newBuilder()
+                    .uri(xrpc(this.uri) + ATProtocolTypes.RepoDeleteRecord)
                     .header("Authorization", request.getBearerToken())
-                    .request(HttpMediaType.APPLICATION_JSON)
-                    .json(record.toJson())
-                    .post();
+                    .header("Content-Type", "application/json")
+                    .POST(BodyPublishers.ofString(record.toJson()))
+                    .build();
+
+            return HttpClient.newHttpClient().sendAsync(httpRequest, BodyHandlers.ofString())
+                    .thenApply(HttpResponse::statusCode)
+                    .thenApply(code -> code == 200 ? CompletableFuture.completedFuture(null) : CompletableFuture.failedFuture(new RuntimeException("Failed to delete block")));
         });
     }
 
@@ -218,15 +246,17 @@ public class _GraphResource implements GraphResource {
             GraphGetBlocksRequest request
     ) {
         return proceed(GraphGetBlocksResponse.class, () -> {
-            HttpRequestBuilder builder =
-                    new HttpRequestBuilder()
-                            .target(xrpc(this.uri))
-                            .path(BlueskyTypes.GraphGetBlocks)
-                            .header("Authorization", request.getBearerToken())
-                            .request(HttpMediaType.APPLICATION_JSON);
+            HttpRequest httpRequest = HttpRequest.newBuilder()
+                    .uri(xrpc(this.uri) + BlueskyTypes.GraphGetBlocks)
+                    .header("Authorization", request.getBearerToken())
+                    .GET()
+                    .build();
 
-            request.toMap().forEach(builder::param);
-            return builder.get();
+            request.toMap().forEach((key, value) -> httpRequest = httpRequest.uri(xrpc(this.uri) + BlueskyTypes.GraphGetBlocks + "?" + key + "=" + value));
+
+            return HttpClient.newHttpClient().sendAsync(httpRequest, BodyHandlers.ofString())
+                    .thenApply(HttpResponse::body)
+                    .thenApply(Response::fromJson);
         });
     }
 }

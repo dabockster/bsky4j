@@ -11,8 +11,12 @@ import bsky4j.api.entity.bsky.actor.ActorGetProfilesResponse;
 import bsky4j.api.entity.bsky.actor.ActorSearchActorsRequest;
 import bsky4j.api.entity.bsky.actor.ActorSearchActorsResponse;
 import bsky4j.api.entity.share.Response;
-import net.socialhub.http.HttpMediaType;
-import net.socialhub.http.HttpRequestBuilder;
+
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.http.HttpResponse.BodyHandlers;
+import java.util.Map;
 
 import static bsky4j.internal.share._InternalUtility.proceed;
 import static bsky4j.internal.share._InternalUtility.xrpc;
@@ -20,9 +24,11 @@ import static bsky4j.internal.share._InternalUtility.xrpc;
 public class _ActorResource implements ActorResource {
 
     private final String uri;
+    private final HttpClient client;
 
     public _ActorResource(String uri) {
         this.uri = uri;
+        this.client = HttpClient.newHttpClient();
     }
 
     @Override
@@ -31,15 +37,20 @@ public class _ActorResource implements ActorResource {
     ) {
         return proceed(ActorSearchActorsResponse.class, () -> {
 
-            HttpRequestBuilder builder =
-                    new HttpRequestBuilder()
-                            .target(xrpc(this.uri))
-                            .path(BlueskyTypes.ActorSearchActors)
-                            .header("Authorization", request.getBearerToken())
-                            .request(HttpMediaType.APPLICATION_JSON);
+            HttpRequest.Builder builder =
+                    HttpRequest.newBuilder()
+                            .uri(xrpc(this.uri, BlueskyTypes.ActorSearchActors))
+                            .header("Authorization", request.getBearerToken());
 
-            request.toMap().forEach(builder::param);
-            return builder.get();
+            request.toMap().forEach((key, value) -> {
+                builder.header(key, value);
+            });
+
+            HttpRequest httpRequest = builder.build();
+
+            HttpResponse<String> httpResponse = client.send(httpRequest, BodyHandlers.ofString());
+
+            return new Response<>(httpResponse.statusCode(), httpResponse.body());
         });
     }
 
@@ -49,15 +60,20 @@ public class _ActorResource implements ActorResource {
     ) {
         return proceed(ActorGetProfileResponse.class, () -> {
 
-            HttpRequestBuilder builder =
-                    new HttpRequestBuilder()
-                            .target(xrpc(this.uri))
-                            .path(BlueskyTypes.ActorGetProfile)
-                            .header("Authorization", request.getBearerToken())
-                            .request(HttpMediaType.APPLICATION_JSON);
+            HttpRequest.Builder builder =
+                    HttpRequest.newBuilder()
+                            .uri(xrpc(this.uri, BlueskyTypes.ActorGetProfile))
+                            .header("Authorization", request.getBearerToken());
 
-            request.toMap().forEach(builder::param);
-            return builder.get();
+            request.toMap().forEach((key, value) -> {
+                builder.header(key, value);
+            });
+
+            HttpRequest httpRequest = builder.build();
+
+            HttpResponse<String> httpResponse = client.send(httpRequest, BodyHandlers.ofString());
+
+            return new Response<>(httpResponse.statusCode(), httpResponse.body());
         });
     }
 
@@ -67,17 +83,20 @@ public class _ActorResource implements ActorResource {
     ) {
         return proceed(ActorGetProfilesResponse.class, () -> {
 
-            HttpRequestBuilder builder =
-                    new HttpRequestBuilder()
-                            .target(xrpc(this.uri))
-                            .path(BlueskyTypes.ActorGetProfiles)
-                            .header("Authorization", request.getBearerToken())
-                            .request(HttpMediaType.APPLICATION_JSON);
+            HttpRequest.Builder builder =
+                    HttpRequest.newBuilder()
+                            .uri(xrpc(this.uri, BlueskyTypes.ActorGetProfiles))
+                            .header("Authorization", request.getBearerToken());
 
             request.getActors().forEach((actor) -> {
-                builder.param("actors", actor);
+                builder.header("actors", actor);
             });
-            return builder.get();
+
+            HttpRequest httpRequest = builder.build();
+
+            HttpResponse<String> httpResponse = client.send(httpRequest, BodyHandlers.ofString());
+
+            return new Response<>(httpResponse.statusCode(), httpResponse.body());
         });
     }
 
@@ -87,15 +106,20 @@ public class _ActorResource implements ActorResource {
     ) {
         return proceed(ActorGetPreferencesResponse.class, () -> {
 
-            HttpRequestBuilder builder =
-                    new HttpRequestBuilder()
-                            .target(xrpc(this.uri))
-                            .path(BlueskyTypes.ActorGetPreferences)
-                            .header("Authorization", request.getBearerToken())
-                            .request(HttpMediaType.APPLICATION_JSON);
+            HttpRequest.Builder builder =
+                    HttpRequest.newBuilder()
+                            .uri(xrpc(this.uri, BlueskyTypes.ActorGetPreferences))
+                            .header("Authorization", request.getBearerToken());
 
-            request.toMap().forEach(builder::param);
-            return builder.get();
+            request.toMap().forEach((key, value) -> {
+                builder.header(key, value);
+            });
+
+            HttpRequest httpRequest = builder.build();
+
+            HttpResponse<String> httpResponse = client.send(httpRequest, BodyHandlers.ofString());
+
+            return new Response<>(httpResponse.statusCode(), httpResponse.body());
         });
     }
 }

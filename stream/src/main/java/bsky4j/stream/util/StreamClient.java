@@ -13,8 +13,6 @@ import co.nstant.in.cbor.model.Array;
 import co.nstant.in.cbor.model.ByteString;
 import co.nstant.in.cbor.model.DataItem;
 import co.nstant.in.cbor.model.Map;
-import net.socialhub.logger.Logger;
-
 import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.util.HashMap;
@@ -23,6 +21,7 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.logging.Logger;
 
 public class StreamClient implements WebSocketListener {
 
@@ -70,7 +69,7 @@ public class StreamClient implements WebSocketListener {
 
     @Override
     public void onConnect() {
-        logger.debug("[Connection Opened]");
+        logger.info("[Connection Opened]");
 
         this.isOpen = true;
         if (openedCallback != null) {
@@ -149,7 +148,7 @@ public class StreamClient implements WebSocketListener {
                                 }
 
                             } catch (Exception e) {
-                                logger.debug("[Record Deleted?]"
+                                logger.warning("[Record Deleted?]"
                                         + " repo: " + repo
                                         + " path: " + path);
                             }
@@ -158,13 +157,13 @@ public class StreamClient implements WebSocketListener {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.severe("Error while processing message", e);
         }
     }
 
     @Override
     public void onDisconnect(int code, String reason) {
-        logger.debug("[Connection Closed]" +
+        logger.info("[Connection Closed]" +
                 " code: " + code +
                 " reason: " + reason);
 
@@ -177,7 +176,7 @@ public class StreamClient implements WebSocketListener {
     @Override
     public void onError(Exception error) {
         if (error != null) {
-            logger.debug("[Connection Error]"
+            logger.severe("[Connection Error]"
                     + " exception: " + error.getClass().getName()
                     + " message: " + error.getMessage()
                     + " trace: ", error);

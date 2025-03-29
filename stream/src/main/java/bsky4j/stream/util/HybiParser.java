@@ -31,9 +31,6 @@
 
 package bsky4j.stream.util;
 
-
-import net.socialhub.logger.Logger;
-
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.IOException;
@@ -42,6 +39,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.logging.Logger;
 
 public class HybiParser {
 
@@ -209,7 +207,7 @@ public class HybiParser {
             return null;
         }
 
-        logger.trace("Creating frame for: " + data + " op: " + opcode + " err: " + errorCode);
+        logger.fine("Creating frame for: " + data + " op: " + opcode + " err: " + errorCode);
 
         byte[] buffer = (data instanceof String) ? decode((String) data) : (byte[]) data;
         int insert = (errorCode > 0) ? 2 : 0;
@@ -308,20 +306,20 @@ public class HybiParser {
         } else if (opcode == OP_CLOSE) {
             int code = (payload.length >= 2) ? 256 * payload[0] + payload[1] : 0;
             String reason = (payload.length > 2) ? encode(slice(payload, 2)) : null;
-            logger.debug("Got close op! " + code + " " + reason);
+            logger.fine("Got close op! " + code + " " + reason);
             mClient.getListener().onDisconnect(code, reason);
 
         } else if (opcode == OP_PING) {
             if (payload.length > 125) {
                 throw new ProtocolError("Ping payload too large");
             }
-            logger.trace("Sending pong!!");
+            logger.fine("Sending pong!!");
             mClient.sendFrame(frame(payload, OP_PONG, -1));
 
         } else if (opcode == OP_PONG) {
             String message = encode(payload);
             // FIXME: Fire callback...
-            logger.trace("Got pong! " + message);
+            logger.fine("Got pong! " + message);
         }
     }
 

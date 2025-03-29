@@ -2,7 +2,6 @@ package bsky4j.api.entity.atproto.repo;
 
 import bsky4j.api.entity.share.MapRequest;
 import bsky4j.util.ATUriParser;
-
 import javax.annotation.Nullable;
 import java.util.HashMap;
 import java.util.Map;
@@ -13,10 +12,12 @@ public class RepoGetRecordRequest implements MapRequest {
      * The handle or DID of the repo.
      */
     private String repo;
+
     /**
      * The NSID of the record collection.
      */
     private String collection;
+
     /**
      * The key of the record.
      */
@@ -33,45 +34,69 @@ public class RepoGetRecordRequest implements MapRequest {
     @Nullable
     private String cid;
 
-    @Override
-    public Map<String, Object> toMap() {
-        HashMap<String, Object> map = new HashMap<>();
-        addParam(map, "repo", getRepo());
-        addParam(map, "collection", getCollection());
-        addParam(map, "rkey", getRkey());
-        addParam(map, "cid", getCid());
-        return map;
-    }
-
-    // region
-    public static RepoGetRecordRequestBuilder builder() {
-        return new RepoGetRecordRequestBuilder();
+    public RepoGetRecordRequest(String repo, String collection, String rkey) {
+        this.repo = repo;
+        this.collection = collection;
+        this.rkey = rkey;
     }
 
     public String getRepo() {
         return repo;
     }
 
+    public void setRepo(String repo) {
+        this.repo = repo;
+    }
+
     public String getCollection() {
         return collection;
     }
 
+    public void setCollection(String collection) {
+        this.collection = collection;
+    }
+
     public String getRkey() {
-        if (rkey != null) {
-            return rkey;
-        }
-        if (uri != null) {
-            return ATUriParser.getRKey(uri);
-        }
-        return null;
+        return rkey;
+    }
+
+    public void setRkey(String rkey) {
+        this.rkey = rkey;
     }
 
     public String getUri() {
         return uri;
     }
 
+    public void setUri(String uri) {
+        this.uri = uri;
+    }
+
     public String getCid() {
         return cid;
+    }
+
+    public void setCid(@Nullable String cid) {
+        this.cid = cid;
+    }
+
+    @Override
+    public Map<String, Object> toMap() {
+        Map<String, Object> map = new HashMap<>();
+        map.put("repo", repo);
+        map.put("collection", collection);
+        map.put("rkey", getRkey());
+        
+        if (cid != null) {
+            map.put("cid", cid);
+        }
+        
+        return map;
+    }
+
+    // region
+    public static RepoGetRecordRequestBuilder builder() {
+        return new RepoGetRecordRequestBuilder();
     }
 
     public static final class RepoGetRecordRequestBuilder {
@@ -104,20 +129,16 @@ public class RepoGetRecordRequest implements MapRequest {
             return this;
         }
 
-        public RepoGetRecordRequestBuilder cid(String cid) {
+        public RepoGetRecordRequestBuilder cid(@Nullable String cid) {
             this.cid = cid;
             return this;
         }
 
         public RepoGetRecordRequest build() {
-            RepoGetRecordRequest repoGetRecordRequest = new RepoGetRecordRequest();
-            repoGetRecordRequest.collection = this.collection;
-            repoGetRecordRequest.cid = this.cid;
-            repoGetRecordRequest.repo = this.repo;
-            repoGetRecordRequest.rkey = this.rkey;
+            RepoGetRecordRequest repoGetRecordRequest = new RepoGetRecordRequest(repo, collection, rkey);
             repoGetRecordRequest.uri = this.uri;
+            repoGetRecordRequest.cid = this.cid;
             return repoGetRecordRequest;
         }
     }
-    // endregion
 }

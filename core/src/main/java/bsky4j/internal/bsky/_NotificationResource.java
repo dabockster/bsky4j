@@ -8,18 +8,25 @@ import bsky4j.api.entity.bsky.notification.NotificationListNotificationsRequest;
 import bsky4j.api.entity.bsky.notification.NotificationListNotificationsResponse;
 import bsky4j.api.entity.bsky.notification.NotificationUpdateSeenRequest;
 import bsky4j.api.entity.share.Response;
-import net.socialhub.http.HttpMediaType;
-import net.socialhub.http.HttpRequestBuilder;
+import java.net.http.HttpRequest;
+import java.net.http.HttpRequest.BodyPublishers;
+import java.net.http.HttpResponse;
+import java.net.http.HttpResponse.BodyHandlers;
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.util.Map;
 
 import static bsky4j.internal.share._InternalUtility.proceed;
-import static bsky4j.internal.share._InternalUtility.xrpc;
 
 public class _NotificationResource implements NotificationResource {
 
     private final String uri;
+    private final HttpClient client;
 
     public _NotificationResource(String uri) {
         this.uri = uri;
+        this.client = HttpClient.newHttpClient();
     }
 
     @Override
@@ -27,12 +34,14 @@ public class _NotificationResource implements NotificationResource {
             NotificationGetUnreadCountRequest request
     ) {
         return proceed(NotificationGetUnreadCountResponse.class, () -> {
-            return new HttpRequestBuilder()
-                    .target(xrpc(this.uri))
-                    .path(BlueskyTypes.NotificationGetUnreadCount)
+            HttpRequest httpRequest = HttpRequest.newBuilder()
+                    .uri(URI.create(xrpc(this.uri) + BlueskyTypes.NotificationGetUnreadCount))
                     .header("Authorization", request.getBearerToken())
-                    .request(HttpMediaType.APPLICATION_JSON)
-                    .get();
+                    .GET()
+                    .build();
+
+            HttpResponse<String> response = client.send(httpRequest, BodyHandlers.ofString());
+            return new Response<>(response.statusCode(), response.body());
         });
     }
 
@@ -41,15 +50,16 @@ public class _NotificationResource implements NotificationResource {
             NotificationListNotificationsRequest request
     ) {
         return proceed(NotificationListNotificationsResponse.class, () -> {
-            HttpRequestBuilder builder =
-                    new HttpRequestBuilder()
-                            .target(xrpc(this.uri))
-                            .path(BlueskyTypes.NotificationListNotifications)
-                            .header("Authorization", request.getBearerToken())
-                            .request(HttpMediaType.APPLICATION_JSON);
+            HttpRequest.Builder builder = HttpRequest.newBuilder()
+                    .uri(URI.create(xrpc(this.uri) + BlueskyTypes.NotificationListNotifications))
+                    .header("Authorization", request.getBearerToken())
+                    .GET();
 
-            request.toMap().forEach(builder::param);
-            return builder.get();
+            request.toMap().forEach((key, value) -> builder.header(key, value));
+            HttpRequest httpRequest = builder.build();
+
+            HttpResponse<String> response = client.send(httpRequest, BodyHandlers.ofString());
+            return new Response<>(response.statusCode(), response.body());
         });
     }
 
@@ -58,13 +68,15 @@ public class _NotificationResource implements NotificationResource {
             NotificationUpdateSeenRequest request
     ) {
         return proceed(() -> {
-            return new HttpRequestBuilder()
-                    .target(xrpc(this.uri))
-                    .path(BlueskyTypes.NotificationUpdateSeen)
+            HttpRequest httpRequest = HttpRequest.newBuilder()
+                    .uri(URI.create(xrpc(this.uri) + BlueskyTypes.NotificationUpdateSeen))
                     .header("Authorization", request.getBearerToken())
-                    .request(HttpMediaType.APPLICATION_JSON)
-                    .json(request.toJson())
-                    .post();
+                    .header("Content-Type", "application/json")
+                    .POST(BodyPublishers.ofString(request.toJson()))
+                    .build();
+
+            HttpResponse<Void> response = client.send(httpRequest, BodyHandlers.discarding());
+            return new Response<>(response.statusCode(), null);
         });
     }
 }

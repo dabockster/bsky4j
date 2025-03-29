@@ -7,12 +7,9 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import com.google.gson.stream.JsonReader;
 
-import net.socialhub.http.HttpException;
-import net.socialhub.http.HttpResponse;
-import net.socialhub.http.HttpResponseCode;
-
 import java.io.IOException;
 import java.io.StringReader;
+import java.net.http.HttpResponse;
 import java.text.SimpleDateFormat;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -56,32 +53,28 @@ public class _InternalUtility {
         return df;
     });
 
-    public static Gson getGson() {
-        if (!isInitialized.getAndSet(true)) {
-            synchronized (_InternalUtility.class) {
-                if (!isInitialized.get()) {
-                    createGson();
-                }
-            }
+    private static final Gson getGson() {
+        if (isInitialized.get()) {
+            return gsonRef.get();
         }
-        return gsonRef.get();
-    }
-
-    private static synchronized void createGson() {
-        if (gsonRef.get() == null) {
-            GsonBuilder builder = new GsonBuilder()
-                    .registerTypeAdapter(EmbedUnion.class, new EmbedDeserializer())
-                    .registerTypeAdapter(EmbedUnion.class, new EmbedSerializer())
-                    .registerTypeAdapter(EmbedViewUnion.class, new EmbedViewDeserializer())
-                    .registerTypeAdapter(RecordUnion.class, new RecordDeserializer())
-                    .registerTypeAdapter(FeedDefsThreadUnion.class, new FeedDefsThreadDeserializer())
-                    .registerTypeAdapter(RichtextFacetFeatureUnion.class, new RichtextFacetFeatureDeserializer())
-                    .registerTypeAdapter(RichtextFacetFeatureUnion.class, new RichtextFacetFeatureSerializer())
-                    .registerTypeAdapter(EmbedRecordViewUnion.class, new EmbedRecordViewDeserializer())
-                    .registerTypeAdapter(ActorDefsPreferencesUnion.class, new ActorDefsPreferencesDeserializer());
+        
+        Gson gson = new GsonBuilder()
+            .registerTypeAdapter(EmbedUnion.class, new EmbedSerializer())
+            .registerTypeAdapter(EmbedUnion.class, new EmbedDeserializer())
+            .registerTypeAdapter(EmbedRecordViewUnion.class, new EmbedRecordViewDeserializer())
+            .registerTypeAdapter(EmbedViewUnion.class, new EmbedViewDeserializer())
+            .registerTypeAdapter(RecordUnion.class, new RecordDeserializer())
+            .registerTypeAdapter(ActorDefsPreferencesUnion.class, new ActorDefsPreferencesDeserializer())
+            .registerTypeAdapter(FeedDefsThreadUnion.class, new FeedDefsThreadDeserializer())
+            .registerTypeAdapter(RichtextFacetFeatureUnion.class, new RichtextFacetFeatureSerializer())
+            .registerTypeAdapter(RichtextFacetFeatureUnion.class, new RichtextFacetFeatureDeserializer())
+            .create();
             
-            gsonRef.set(builder.create());
+        if (gsonRef.compareAndSet(null, gson)) {
+            isInitialized.set(true);
         }
+        
+        return gsonRef.get();
     }
 
     public static SimpleDateFormat getDateFormat() {
@@ -91,52 +84,29 @@ public class _InternalUtility {
     private _InternalUtility() {
     }
 
-    public static Response<Void> proceed(RequestInterface function) {
-        return proceed(null, function);
-    }
-
-    public static <T> Response<T> proceed(Class<T> clazz, RequestInterface function) {
-        return proceed(clazz, function, null);
-    }
-
-    public static <T> Response<T> proceed(TypeToken<T> clazz, RequestInterface function) {
-        return proceed(null, function, clazz);
-    }
-
-    private static <T> Response<T> proceed(Class<T> clazz, RequestInterface function, TypeToken<T> typeToken) {
+    public static <T> Response<T> proceed(Class<T> responseType, RunnableWithResult<HttpResponse> action) {
         try {
-            HttpResponse response = function.proceed();
-            if (response.getStatusCode() == HttpResponseCode.OK) {
-                Response<T> result = new Response<>();
-                String json = response.asString();
-                result.setJson(json);
-                
-                if (clazz != null) {
-                    result.set(parseJson(json, clazz));
-                } else if (typeToken != null) {
-                    result.set(parseJson(json, typeToken.getType()));
-                }
-                
-                return result;
+            HttpResponse response = action.run();
+            
+            if (response.statusCode() >= 400) {
+                throw new ATProtocolException("HTTP error: " + response.statusCode());
             }
-            throw new ATProtocolException("HTTP error: " + response.getStatusCode());
-        } catch (HttpException e) {
-            throw handleError(e);
-        }
-    }
-
-    private static <T> T parseJson(String json, Type type) {
-        try (JsonReader reader = new JsonReader(new StringReader(json))) {
-            reader.setLenient(true);
-            return getGson().fromJson(reader, type);
+            
+            String body = response.body().toString();
+            return Response.of(getGson().fromJson(new JsonReader(new StringReader(body)), responseType));
+            
         } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "Failed to parse JSON", e);
-            throw new ATProtocolException("Failed to parse JSON response", e);
+            LOGGER.log(Level.SEVERE, "Error during HTTP request", e);
+            throw new ATProtocolException("HTTP request failed", e);
         }
     }
 
-    public interface RequestInterface {
-        HttpResponse proceed() throws HttpException;
+    public static Response<Void> proceed(RunnableWithResult<HttpResponse> action) {
+        return proceed(null, action);
+    }
+
+    public static <T> Response<T> proceed(TypeToken<T> responseType, RunnableWithResult<HttpResponse> action) {
+        return proceed(responseType.getType(), action);
     }
 
     public static String xrpc(String uri) {
@@ -168,5 +138,9 @@ public class _InternalUtility {
             LOGGER.log(Level.SEVERE, "Failed to parse error response: " + e.getMessage(), t);
             return new ATProtocolException("Failed to parse error response: " + e.getMessage(), e);
         }
+    }
+
+    public interface RunnableWithResult<T> {
+        T run() throws IOException;
     }
 }

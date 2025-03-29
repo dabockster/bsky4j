@@ -5,14 +5,17 @@ import bsky4j.stream.ATProtocolStreamFactory;
 import bsky4j.stream.AbstractTest;
 import bsky4j.stream.api.entity.atproto.sync.SyncSubscribeReposRequest;
 import bsky4j.stream.util.StreamClient;
-import net.socialhub.logger.Logger;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import org.junit.Test;
 
 public class SubscribeRepoTest extends AbstractTest {
 
+    private static final Logger LOGGER = Logger.getLogger(SubscribeRepoTest.class.getName());
+
     @Test
     public void testSubscribeRepo() {
-        Logger.getLogger(null).setLogLevel(Logger.LogLevel.WARN);
+        LOGGER.setLevel(Level.WARNING);
 
         try {
             StreamClient stream = ATProtocolStreamFactory
@@ -31,7 +34,7 @@ public class SubscribeRepoTest extends AbstractTest {
             Thread.sleep(10000);
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOGGER.log(Level.SEVERE, "Error in testSubscribeRepo", e);
         }
     }
 }

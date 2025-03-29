@@ -15,7 +15,7 @@ import bsky4j.internal.atproto._RepoResource;
 import bsky4j.internal.atproto._ServerResource;
 import bsky4j.internal.atproto._XRPCResource;
 
-import net.socialhub.http.HttpClient;
+import java.net.http.HttpClient;
 
 /**
  * Implementation of the ATProtocol interface with optimized HTTP client usage.
@@ -46,6 +46,15 @@ public class _ATProtocol implements ATProtocol {
         this.xrpc = new _XRPCResource(uri, httpClient);
         this.lexicon = new _LexiconResource(uri, httpClient);
         this.uriResolver = new _ATURIResolver();
+    }
+
+    /**
+     * Creates a new ATProtocol instance with the specified URI and default HTTP client.
+     *
+     * @param uri The base URI for the ATProtocol service
+     */
+    public _ATProtocol(String uri) {
+        this(uri, HttpClient.newHttpClient());
     }
 
     /**

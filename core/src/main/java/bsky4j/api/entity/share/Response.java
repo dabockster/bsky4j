@@ -1,31 +1,36 @@
 package bsky4j.api.entity.share;
 
-import javax.annotation.Nullable;
+import com.google.gson.annotations.SerializedName;
 
 /**
  * @author uakihir0
  */
 public class Response<T> {
-
-    private T object;
-
-    public T get() {
-        return object;
-    }
-
-    @Nullable
+    @SerializedName("json")
     private String json;
+    
+    @SerializedName("data")
+    private T data;
 
-    @Nullable
     public String getJson() {
         return json;
     }
 
-    public void set(T object) {
-        this.object = object;
+    public void setJson(String json) {
+        this.json = json;
     }
 
-    public void setJson(@Nullable String json) {
-        this.json = json;
+    public T getData() {
+        return data;
+    }
+
+    public void setData(T data) {
+        this.data = data;
+    }
+
+    public static <T> Response<T> of(T data) {
+        Response<T> response = new Response<>();
+        response.setData(data);
+        return response;
     }
 }

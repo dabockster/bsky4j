@@ -100,7 +100,7 @@ public class XRPCException extends RuntimeException {
         }
         
         // Split on common error message delimiters
-        return List.of(errorMessage.split("[\r\n|;|,|\.]"));
+        return List.of(errorMessage.split("[\\r\\n|;|,|\\.]"));
     }
     
     /**
